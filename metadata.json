@@ -1,0 +1,6 @@
+{
+  "name": "Dashboard de Vendas — CLARO Tietê Plaza",
+  "description": "Controle Diário de Indicadores • LOJA CLARO Shopping Tietê Plaza",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
