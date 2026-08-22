@@ -38,15 +38,27 @@ class SalesEnergyMusicEngine {
     if (!this.ctx || !this.masterGain) return;
 
     if (this.ctx.state === 'suspended') {
-      await this.ctx.resume();
+      try {
+        await this.ctx.resume();
+      } catch {
+        // Handled by user interaction unlock
+      }
     }
 
-    if (this.isPlaying) return;
+    if (this.isPlaying) {
+      if (this.ctx.state === 'suspended') {
+        try {
+          await this.ctx.resume();
+        } catch {}
+      }
+      return;
+    }
+
     this.isPlaying = true;
 
     const now = this.ctx.currentTime;
     this.masterGain.gain.setValueAtTime(0.001, now);
-    this.masterGain.gain.linearRampToValueAtTime(0.42, now + 0.5);
+    this.masterGain.gain.linearRampToValueAtTime(0.42, now + 0.4);
 
     this.scheduleBeatLoop();
   }
@@ -291,13 +303,40 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
       setIsLoaded(true);
     }, 60);
 
-    // Attempt to start upbeat sales music
-    engine.start().catch(() => {
-      // Autoplay might await first user gesture
+    // Attempt immediate automatic playback upon opening page
+    const tryAutoplay = () => {
+      if (musicEngineRef.current) {
+        musicEngineRef.current.start().catch(() => {});
+      }
+    };
+
+    tryAutoplay();
+
+    // Unlock listeners: browsers may require an initial user signal (pointer, tap, key, scroll)
+    const unlockAudioEvents = ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click', 'wheel', 'mousemove'];
+    const handleInitialUserSignal = () => {
+      tryAutoplay();
+      // Remove listeners once audio is initialized
+      unlockAudioEvents.forEach((ev) => {
+        window.removeEventListener(ev, handleInitialUserSignal);
+      });
+    };
+
+    unlockAudioEvents.forEach((ev) => {
+      window.addEventListener(ev, handleInitialUserSignal, { passive: true, once: false });
     });
+
+    // Also trigger on document visibility change / window focus
+    window.addEventListener('focus', tryAutoplay);
+    document.addEventListener('visibilitychange', tryAutoplay);
 
     return () => {
       clearTimeout(timer);
+      unlockAudioEvents.forEach((ev) => {
+        window.removeEventListener(ev, handleInitialUserSignal);
+      });
+      window.removeEventListener('focus', tryAutoplay);
+      document.removeEventListener('visibilitychange', tryAutoplay);
       if (musicEngineRef.current) {
         musicEngineRef.current.stop(0.1);
       }
