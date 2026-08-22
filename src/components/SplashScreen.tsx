@@ -7,17 +7,32 @@ interface SplashScreenProps {
   onEnter: () => void;
 }
 
-// Energetic, Upbeat Sales Motivation Music Synthesizer (126 BPM)
-class SalesEnergyMusicEngine {
+// Heavy Rave & Hard Electronic Music Synthesizer (138 BPM, Acid 303 Rolling Bass, Distorted Kick, Searing Hi-Hats & Rave Stabs)
+class RaveMusicEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private isPlaying = false;
+  private distortionNode: WaveShaperNode | null = null;
+  public isPlaying = false;
+  private isLoopRunning = false;
   private timerId: number | null = null;
   private step = 0;
-  private bpm = 126;
+  private bpm = 138;
+
+  // Custom soft-clipping curve for aggressive rave sound
+  private makeDistortionCurve(amount = 25): Float32Array {
+    const k = typeof amount === 'number' ? amount : 25;
+    const n_samples = 44100;
+    const curve = new Float32Array(n_samples);
+    const deg = Math.PI / 180;
+    for (let i = 0; i < n_samples; ++i) {
+      const x = (i * 2) / n_samples - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  }
 
   public init() {
-    if (this.ctx) return;
+    if (this.ctx && this.ctx.state !== 'closed') return;
     try {
       const AudioContextClass =
         window.AudioContext ||
@@ -26,81 +41,112 @@ class SalesEnergyMusicEngine {
 
       this.ctx = new AudioContextClass();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(0.55, this.ctx.currentTime);
+
+      this.distortionNode = this.ctx.createWaveShaper();
+      this.distortionNode.curve = this.makeDistortionCurve(18);
+      this.distortionNode.oversample = '2x';
+
+      this.distortionNode.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
+
+      this.ctx.onstatechange = () => {
+        if (this.ctx?.state === 'running' && !this.isLoopRunning && this.isPlaying) {
+          this.isLoopRunning = true;
+          this.scheduleBeatLoop();
+        }
+      };
     } catch {
       // Ignored if audio not supported
     }
   }
 
-  public async start() {
+  public async start(): Promise<boolean> {
     this.init();
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.masterGain) return false;
+
+    this.isPlaying = true;
 
     if (this.ctx.state === 'suspended') {
       try {
         await this.ctx.resume();
       } catch {
-        // Handled by user interaction unlock
+        // Will resume on first user interaction
       }
     }
 
-    if (this.isPlaying) {
-      if (this.ctx.state === 'suspended') {
-        try {
-          await this.ctx.resume();
-        } catch {}
-      }
-      return;
+    if (this.ctx.state === 'running' && !this.isLoopRunning) {
+      this.isLoopRunning = true;
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.setValueAtTime(0.001, now);
+      this.masterGain.gain.linearRampToValueAtTime(0.55, now + 0.25);
+      this.step = 0;
+      this.scheduleBeatLoop();
+      return true;
     }
 
-    this.isPlaying = true;
-
-    const now = this.ctx.currentTime;
-    this.masterGain.gain.setValueAtTime(0.001, now);
-    this.masterGain.gain.linearRampToValueAtTime(0.42, now + 0.4);
-
-    this.scheduleBeatLoop();
+    return this.ctx.state === 'running';
   }
 
-  private playKick(time: number) {
+  // 1. Heavy Punchy Rave Kick with Hard Transient & Low Sub Rumble
+  private playHeavyKick(time: number) {
     if (!this.ctx || !this.masterGain) return;
+
+    // Body Oscillator (Hard pitch sweep 280Hz -> 40Hz)
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(42, time + 0.12);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(280, time);
+    osc.frequency.exponentialRampToValueAtTime(42, time + 0.08);
 
-    gain.gain.setValueAtTime(0.35, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+    gain.gain.setValueAtTime(0.7, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
 
     osc.connect(gain);
     gain.connect(this.masterGain);
 
     osc.start(time);
-    osc.stop(time + 0.2);
+    osc.stop(time + 0.25);
+
+    // Click transient (top punch)
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(900, time);
+    clickOsc.frequency.exponentialRampToValueAtTime(100, time + 0.02);
+
+    clickGain.gain.setValueAtTime(0.4, time);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, time + 0.025);
+
+    clickOsc.connect(clickGain);
+    clickGain.connect(this.masterGain);
+
+    clickOsc.start(time);
+    clickOsc.stop(time + 0.03);
   }
 
-  private playSnareClap(time: number) {
+  // 2. Hard Industrial Snare / Clap
+  private playRaveClap(time: number) {
     if (!this.ctx || !this.masterGain) return;
-    
-    // Noise buffer for snap
-    const bufferSize = this.ctx.sampleRate * 0.12;
+
+    const bufferSize = this.ctx.sampleRate * 0.14;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.03));
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.035));
     }
 
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
 
     const filter = this.ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(1100, time);
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1300, time);
+    filter.Q.setValueAtTime(2.2, time);
 
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.25, time);
+    gain.gain.setValueAtTime(0.42, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.14);
 
     noise.connect(filter);
@@ -109,26 +155,29 @@ class SalesEnergyMusicEngine {
 
     noise.start(time);
 
-    // Tone body
+    // Hard punch tone
     const osc = this.ctx.createOscillator();
     const oscGain = this.ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(220, time);
-    osc.frequency.exponentialRampToValueAtTime(130, time + 0.08);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, time);
+    osc.frequency.exponentialRampToValueAtTime(110, time + 0.06);
 
-    oscGain.gain.setValueAtTime(0.18, time);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+    oscGain.gain.setValueAtTime(0.28, time);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, time + 0.07);
 
     osc.connect(oscGain);
     oscGain.connect(this.masterGain);
 
     osc.start(time);
-    osc.stop(time + 0.1);
+    osc.stop(time + 0.08);
   }
 
-  private playHiHat(time: number, isAccent = false) {
+  // 3. Searing Open / Closed Hi-Hats
+  private playRaveHat(time: number, isOpen = false) {
     if (!this.ctx || !this.masterGain) return;
-    const bufferSize = this.ctx.sampleRate * 0.05;
+
+    const dur = isOpen ? 0.11 : 0.035;
+    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
@@ -140,11 +189,11 @@ class SalesEnergyMusicEngine {
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.setValueAtTime(7500, time);
+    filter.frequency.setValueAtTime(isOpen ? 6500 : 8500, time);
 
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(isAccent ? 0.12 : 0.06, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + (isAccent ? 0.06 : 0.035));
+    gain.gain.setValueAtTime(isOpen ? 0.22 : 0.11, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
 
     noise.connect(filter);
     filter.connect(gain);
@@ -153,54 +202,39 @@ class SalesEnergyMusicEngine {
     noise.start(time);
   }
 
-  private playSynthNote(freq: number, time: number, dur: number, gainVal = 0.1, type: OscillatorType = 'sawtooth') {
+  // 4. Acid 303 Rolling Bass with Resonant Filter Modulation
+  private playAcidBass(freq: number, time: number, dur: number, cutoff: number, resonance = 8) {
     if (!this.ctx || !this.masterGain) return;
-    const osc = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
-    const gain = this.ctx.createGain();
 
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, time);
-
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(2600, time);
-    filter.frequency.exponentialRampToValueAtTime(700, time + dur);
-
-    gain.gain.setValueAtTime(0.001, time);
-    gain.gain.linearRampToValueAtTime(gainVal, time + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
-
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start(time);
-    osc.stop(time + dur + 0.05);
-  }
-
-  private playBass(freq: number, time: number, dur: number) {
-    if (!this.ctx || !this.masterGain) return;
     const osc = this.ctx.createOscillator();
     const sub = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
 
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(freq, time);
 
-    sub.type = 'sine';
+    sub.type = 'square';
     sub.frequency.setValueAtTime(freq / 2, time);
 
-    gain.gain.setValueAtTime(0.2, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-    const filter = this.ctx.createBiquadFilter();
+    // Resonant Acid Lowpass Filter Sweep
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, time);
+    filter.Q.setValueAtTime(resonance, time);
+    filter.frequency.setValueAtTime(cutoff * 3.5, time);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(120, cutoff * 0.7), time + dur);
+
+    gain.gain.setValueAtTime(0.32, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
 
     osc.connect(filter);
     sub.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain);
+
+    if (this.distortionNode) {
+      gain.connect(this.distortionNode);
+    } else {
+      gain.connect(this.masterGain);
+    }
 
     osc.start(time);
     sub.start(time);
@@ -208,51 +242,149 @@ class SalesEnergyMusicEngine {
     sub.stop(time + dur + 0.05);
   }
 
+  // 5. Heavy Rave Synth Stab / Lead (Detuned Sawtooth Stabs)
+  private playRaveStab(freq: number, time: number, dur: number, gainVal = 0.16) {
+    if (!this.ctx || !this.masterGain) return;
+
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const osc3 = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(freq, time);
+
+    // Detuned voices for massive rave sound
+    osc2.type = 'sawtooth';
+    osc2.frequency.setValueAtTime(freq * 1.012, time);
+
+    osc3.type = 'sawtooth';
+    osc3.frequency.setValueAtTime(freq * 0.988, time);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(4500, time);
+    filter.frequency.exponentialRampToValueAtTime(900, time + dur);
+    filter.Q.setValueAtTime(4, time);
+
+    gain.gain.setValueAtTime(0.001, time);
+    gain.gain.linearRampToValueAtTime(gainVal, time + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    osc3.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc1.start(time);
+    osc2.start(time);
+    osc3.start(time);
+    osc1.stop(time + dur + 0.05);
+    osc2.stop(time + dur + 0.05);
+    osc3.stop(time + dur + 0.05);
+  }
+
+  // 6. Laser Zaps & Rave Noise Sweeps
+  private playRaveLaser(time: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(2400, time);
+    osc.frequency.exponentialRampToValueAtTime(140, time + 0.15);
+
+    gain.gain.setValueAtTime(0.18, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(time);
+    osc.stop(time + 0.18);
+  }
+
   private scheduleBeatLoop() {
-    if (!this.isPlaying || !this.ctx) return;
+    if (!this.isPlaying || !this.isLoopRunning || !this.ctx || this.ctx.state !== 'running') {
+      this.isLoopRunning = false;
+      return;
+    }
 
     const secondsPer16th = 60 / this.bpm / 4;
-    const startTime = this.ctx.currentTime + 0.05;
+    const startTime = this.ctx.currentTime + 0.04;
 
-    // Upbeat chords in key of C Major / A Minor: C -> G -> Am -> F (Triumphant, victorious sales anthem)
-    // 16 steps per bar (4 bars loop = 64 sixteenth steps)
-    const barChords = [
-      { bass: 130.81, treble: [523.25, 659.25, 783.99, 1046.5] }, // C Major (C5, E5, G5, C6)
-      { bass: 98.00, treble: [392.00, 493.88, 587.33, 783.99] },  // G Major (G4, B4, D5, G5)
-      { bass: 110.00, treble: [440.00, 523.25, 659.25, 880.00] }, // A Minor (A4, C5, E5, A5)
-      { bass: 87.31, treble: [349.23, 440.00, 523.25, 698.46] },  // F Major (F4, A4, C5, F5)
+    // Dark & Driving Rave Progression in F Minor: Fm -> Db -> Eb -> C7 (Intense peak-time energy)
+    const raveChords = [
+      {
+        bassFreq: 87.31, // F2
+        cutoff: 750,
+        stabs: [349.23, 415.3, 523.25, 698.46], // F4, Ab4, C5, F5
+      },
+      {
+        bassFreq: 69.3, // Db2
+        cutoff: 920,
+        stabs: [277.18, 349.23, 415.3, 554.37], // Db4, F4, Ab4, Db5
+      },
+      {
+        bassFreq: 77.78, // Eb2
+        cutoff: 1100,
+        stabs: [311.13, 392.0, 466.16, 622.25], // Eb4, G4, Bb4, Eb5
+      },
+      {
+        bassFreq: 65.41, // C2
+        cutoff: 1400,
+        stabs: [261.63, 329.63, 392.0, 523.25], // C4, E4, G4, C5
+      },
     ];
 
     const currentBarIdx = Math.floor((this.step % 64) / 16);
-    const chord = barChords[currentBarIdx];
+    const barData = raveChords[currentBarIdx];
 
+    // Acid 303 Rolling 16th Pattern (0, 2, 3, 5, 6, 8, 10, 11, 13, 14, 15)
     for (let s = 0; s < 16; s++) {
       const t = startTime + s * secondsPer16th;
 
-      // 1. Kick on beats 0, 4, 8, 12 (Four-on-the-floor energy)
+      // 1. Four-on-the-floor Heavy Distorted Rave Kick (0, 4, 8, 12)
       if (s % 4 === 0) {
-        this.playKick(t);
+        this.playHeavyKick(t);
       }
 
-      // 2. Snare / Clap on beats 4, 12
+      // 2. Heavy Industrial Clap on beats 4 & 12
       if (s === 4 || s === 12) {
-        this.playSnareClap(t);
+        this.playRaveClap(t);
       }
 
-      // 3. Offbeat Open Hi-Hat on 2, 6, 10, 14 & Shakers
-      if (s % 2 === 0) {
-        this.playHiHat(t, s % 4 === 2);
+      // 3. Open Hi-Hat on offbeats (2, 6, 10, 14) + Closed hats driving 16th rhythm
+      if (s % 4 === 2) {
+        this.playRaveHat(t, true);
+      } else {
+        this.playRaveHat(t, false);
       }
 
-      // 4. Energetic Driving Bassline (Groove pattern: 0, 3, 6, 8, 11, 14)
-      if ([0, 3, 6, 8, 11, 14].includes(s)) {
-        this.playBass(chord.bass, t, secondsPer16th * 1.5);
+      // 4. Rolling Acid 303 Bassline (Driving Psy/Techno 16ths)
+      if (s !== 0 && s !== 4 && s !== 8 && s !== 12) {
+        // Offbeat / rolling acid bass
+        const isAccent = s === 3 || s === 7 || s === 11 || s === 15;
+        const notePitch = isAccent ? barData.bassFreq * 1.5 : barData.bassFreq;
+        this.playAcidBass(
+          notePitch,
+          t,
+          secondsPer16th * (isAccent ? 1.4 : 0.85),
+          barData.cutoff * (isAccent ? 1.8 : 1.0),
+          isAccent ? 12 : 7
+        );
       }
 
-      // 5. Bright Motivational Synth Chords & Riffs
-      if ([0, 3, 6, 8, 10, 12, 14].includes(s)) {
-        const note = chord.treble[s % chord.treble.length];
-        this.playSynthNote(note, t, secondsPer16th * 1.8, 0.08, 'sawtooth');
+      // 5. Heavy Rave Stabs on Syncopated Beats (0, 3, 6, 10, 14)
+      if ([0, 3, 6, 10, 14].includes(s)) {
+        const stabNote = barData.stabs[(s + currentBarIdx) % barData.stabs.length];
+        this.playRaveStab(stabNote, t, secondsPer16th * 1.6, 0.14);
+      }
+
+      // 6. Laser Zap FX on transition of bar
+      if (s === 15 && currentBarIdx % 2 === 1) {
+        this.playRaveLaser(t);
       }
     }
 
@@ -260,30 +392,29 @@ class SalesEnergyMusicEngine {
     const barDurationMs = 16 * secondsPer16th * 1000;
     this.timerId = window.setTimeout(() => {
       this.scheduleBeatLoop();
-    }, barDurationMs - 40);
+    }, barDurationMs - 35);
   }
 
-  public stop(fadeOutSeconds = 0.6) {
-    if (!this.ctx || !this.masterGain) return;
+  public stop(fadeOutSeconds = 0.5) {
     this.isPlaying = false;
+    this.isLoopRunning = false;
     if (this.timerId) {
       clearTimeout(this.timerId);
       this.timerId = null;
     }
 
+    if (!this.ctx || !this.masterGain) return;
+
     try {
       const now = this.ctx.currentTime;
       this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-      this.masterGain.gain.linearRampToValueAtTime(0.0001, now + fadeOutSeconds);
+      this.masterGain.gain.linearRampToValueAtTime(0.001, now + fadeOutSeconds);
       setTimeout(() => {
-        if (this.ctx && this.ctx.state !== 'closed') {
-          this.ctx.close().catch(() => {});
-          this.ctx = null;
+        if (this.ctx && !this.isPlaying && this.ctx.state !== 'closed') {
+          this.ctx.suspend().catch(() => {});
         }
       }, fadeOutSeconds * 1000 + 50);
-    } catch {
-      // Ignored
-    }
+    } catch {}
   }
 }
 
@@ -291,11 +422,11 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [isPlayingMusic, setIsPlayingMusic] = useState(true);
-  const musicEngineRef = useRef<SalesEnergyMusicEngine | null>(null);
+  const musicEngineRef = useRef<RaveMusicEngine | null>(null);
 
   useEffect(() => {
-    // Instantiate upbeat sales music synthesizer
-    const engine = new SalesEnergyMusicEngine();
+    // Instantiate heavy electronic rave music synthesizer
+    const engine = new RaveMusicEngine();
     musicEngineRef.current = engine;
 
     // Start UI entrance animation
@@ -367,10 +498,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
   return (
     <div
       id="splash-screen-container"
+      onPointerMove={() => {
+        if (musicEngineRef.current && isPlayingMusic && !musicEngineRef.current.isPlaying) {
+          musicEngineRef.current.start().catch(() => {});
+        }
+      }}
+      onTouchStart={() => {
+        if (musicEngineRef.current && isPlayingMusic) {
+          musicEngineRef.current.start().catch(() => {});
+        }
+      }}
       onClick={() => {
         // First click anywhere on the splash unblocks and plays audio immediately
         if (musicEngineRef.current && isPlayingMusic) {
-          musicEngineRef.current.start();
+          musicEngineRef.current.start().catch(() => {});
         }
       }}
       className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-4 select-none overflow-hidden transition-all duration-400 bg-[#060002] ${

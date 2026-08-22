@@ -31,6 +31,20 @@ export interface DailyEntry {
 export interface MonthData {
   monthKey: string; // YYYY-MM
   days: Record<string, DailyEntry>; // YYYY-MM-DD -> DailyEntry
+  goals?: Record<string, number>; // indicatorId -> meta de vendas do mês
+}
+
+export interface StoreGoalSummary {
+  indicatorId: string;
+  indicatorName: string;
+  subtitle?: string;
+  categoryId: string;
+  categoryName: string;
+  goal: number;
+  realized: number;
+  percent: number;
+  remaining: number;
+  status: 'achieved' | 'on_track' | 'warning' | 'no_goal';
 }
 
 export interface StoreDatabase {
@@ -38,6 +52,7 @@ export interface StoreDatabase {
   storeName: string;
   sellers: Seller[];
   months: Record<string, MonthData>;
+  monthlyGoals?: Record<string, Record<string, number>>; // monthKey -> indicatorId -> goal
   lastSelectedDate: string;
 }
 

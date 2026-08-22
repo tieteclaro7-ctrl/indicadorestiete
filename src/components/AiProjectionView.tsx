@@ -232,7 +232,7 @@ export const AiProjectionView: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <div className="w-3 h-3 rounded-full bg-red-600 animate-ping" />
             <h3 className="text-base font-black text-zinc-900 uppercase tracking-tight">
-              Parecer Executivo da Inteligência Artificial
+              Parecer Executivo
             </h3>
           </div>
           {analysisTimestamp && (

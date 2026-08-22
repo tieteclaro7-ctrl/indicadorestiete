@@ -22,6 +22,10 @@ interface SalesContextType {
   addSeller: (name: string) => void;
   removeSeller: (sellerId: string) => void;
   toggleSellerActive: (sellerId: string) => void;
+  // Store goals management
+  updateStoreGoal: (monthKey: string, indicatorId: string, value: number) => void;
+  updateAllStoreGoals: (monthKey: string, goals: Record<string, number>) => void;
+  clearStoreGoals: (monthKey: string) => void;
   // Data actions
   resetToSampleData: () => void;
   clearAllData: () => void;
@@ -308,6 +312,70 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
+  const updateStoreGoal = (monthKey: string, indicatorId: string, value: number) => {
+    const safeVal = Math.max(0, isNaN(value) ? 0 : value);
+    setDatabase((prev) => {
+      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+      const currentGoals = { ...(existingMonth.goals || {}) };
+      if (safeVal === 0) {
+        delete currentGoals[indicatorId];
+      } else {
+        currentGoals[indicatorId] = safeVal;
+      }
+
+      return {
+        ...prev,
+        months: {
+          ...prev.months,
+          [monthKey]: {
+            ...existingMonth,
+            goals: currentGoals,
+          },
+        },
+      };
+    });
+  };
+
+  const updateAllStoreGoals = (monthKey: string, goals: Record<string, number>) => {
+    setDatabase((prev) => {
+      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+      const cleanGoals: Record<string, number> = {};
+      Object.entries(goals).forEach(([k, v]) => {
+        const num = Math.max(0, isNaN(v) ? 0 : v);
+        if (num > 0) cleanGoals[k] = num;
+      });
+
+      return {
+        ...prev,
+        months: {
+          ...prev.months,
+          [monthKey]: {
+            ...existingMonth,
+            goals: cleanGoals,
+          },
+        },
+      };
+    });
+    showToast(`Metas da loja para ${monthKey.split('-').reverse().join('/')} salvas com sucesso!`, 'success');
+  };
+
+  const clearStoreGoals = (monthKey: string) => {
+    setDatabase((prev) => {
+      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+      return {
+        ...prev,
+        months: {
+          ...prev.months,
+          [monthKey]: {
+            ...existingMonth,
+            goals: {},
+          },
+        },
+      };
+    });
+    showToast(`Metas do mês ${monthKey.split('-').reverse().join('/')} foram zeradas.`, 'info');
+  };
+
   const resetToSampleData = () => {
     const demo = generateDemoSampleDatabase();
     setDatabase(demo);
@@ -422,6 +490,9 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addSeller,
         removeSeller,
         toggleSellerActive,
+        updateStoreGoal,
+        updateAllStoreGoals,
+        clearStoreGoals,
         resetToSampleData,
         clearAllData,
         clearCacheAndReset,
