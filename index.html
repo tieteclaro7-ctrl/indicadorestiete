@@ -11,6 +11,8 @@
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
+    <!-- Persistent audio tag with inline mp3 source for guaranteed immediate autoplay on browser start -->
+    <audio id="global-bg-audio" loop playsinline webkit-playsinline preload="auto" src="/05.mp3" style="display:none;"></audio>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

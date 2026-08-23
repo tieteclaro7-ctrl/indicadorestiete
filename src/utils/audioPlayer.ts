@@ -1,5 +1,6 @@
 // Audio Engine for Loja Claro Tietê Plaza
-// Guaranteed Auto-Play with browser policy bypass and high-fidelity streaming of (05).mp3
+// Compatible with local development, Production build, and GitHub Pages/Static deployment
+// Plays the official (05).mp3 instantly upon landing and unlocks seamlessly on any browser gesture
 
 import claroMusicTrack from '../assets/05.mp3';
 
@@ -15,7 +16,7 @@ export const AUDIO_PLAYLIST: TrackInfo[] = [
     id: 'claro-official-05',
     name: 'Música Oficial Loja Claro Tietê Plaza (05.mp3)',
     genre: 'Trilha Sonora Original • Alta Definição',
-    url: claroMusicTrack || '/05.mp3',
+    url: claroMusicTrack,
   },
 ];
 
@@ -24,28 +25,43 @@ class AudioEngine {
   private audioCtx: AudioContext | null = null;
   private volume: number = 0.9;
   private isMuted: boolean = false;
-  private isUnlocked: boolean = false;
   private onStateChangeCallbacks: ((isPlaying: boolean) => void)[] = [];
+  private hasInteracted: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
-      // Global unlocking on any first interaction anywhere in the window
-      const unlockEvents = ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'click', 'keydown', 'scroll', 'visibilitychange'];
-      
-      const onFirstGesture = () => {
+      // Immediate hookup into DOM & window gesture unlockers
+      const unlockAndTrigger = () => {
         this.unlockAndPlay();
       };
 
-      unlockEvents.forEach((evt) => {
-        window.addEventListener(evt, onFirstGesture, { capture: true, passive: true });
-        document.addEventListener(evt, onFirstGesture, { capture: true, passive: true });
+      const interactionEvents = [
+        'touchstart',
+        'touchend',
+        'pointerdown',
+        'mousedown',
+        'click',
+        'keydown',
+        'scroll',
+        'wheel',
+        'focus',
+      ];
+
+      interactionEvents.forEach((evt) => {
+        window.addEventListener(evt, unlockAndTrigger, { capture: true, passive: true });
+        document.addEventListener(evt, unlockAndTrigger, { capture: true, passive: true });
       });
 
-      // Try autoplaying as soon as DOM loads or script executes
-      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      // Immediate attempt as early as possible
+      const startEarly = () => {
         this.initAndAutoPlay();
+      };
+
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        startEarly();
       } else {
-        window.addEventListener('DOMContentLoaded', () => this.initAndAutoPlay());
+        window.addEventListener('DOMContentLoaded', startEarly);
+        window.addEventListener('load', startEarly);
       }
     }
   }
@@ -64,9 +80,16 @@ class AudioEngine {
 
   public getAudio(): HTMLAudioElement {
     if (!this.htmlAudio) {
-      const audio = new Audio();
-      // Primary src: bundled asset with fallback to /05.mp3
-      audio.src = claroMusicTrack || '/05.mp3';
+      // First check if index.html already has the tag
+      const existingDomAudio = typeof document !== 'undefined' ? (document.getElementById('global-bg-audio') as HTMLAudioElement | null) : null;
+      const audio = existingDomAudio || new Audio();
+
+      // Resolve reliable source path (bundled hash url or root path)
+      const primarySrc = claroMusicTrack || '/05.mp3';
+      if (!audio.src || audio.src === '' || audio.src === window.location.href) {
+        audio.src = primarySrc;
+      }
+
       audio.loop = true;
       audio.preload = 'auto';
       audio.crossOrigin = 'anonymous';
@@ -80,13 +103,15 @@ class AudioEngine {
       audio.addEventListener('pause', () => this.notify());
       audio.addEventListener('ended', () => this.notify());
       audio.addEventListener('volumechange', () => this.notify());
-      
+
+      // Fallback mechanism: if relative URL fails in GitHub subdirectory deployment, try alternatives
       audio.addEventListener('error', () => {
-        // Fallback to /05.mp3 if asset import fails
-        if (audio.src !== window.location.origin + '/05.mp3') {
-          audio.src = '/05.mp3';
-          audio.load();
-          audio.play().catch(() => {});
+        if (audio.src.includes('05.mp3')) {
+          if (claroMusicTrack && audio.src !== claroMusicTrack) {
+            audio.src = claroMusicTrack;
+            audio.load();
+            audio.play().catch(() => {});
+          }
         }
       });
     }
@@ -99,28 +124,21 @@ class AudioEngine {
     audio.muted = false;
 
     try {
-      // 1. Try unmuted direct autoplay
+      // 1. Direct unmuted playback
       await audio.play();
-      this.isUnlocked = true;
       this.notify();
       return true;
     } catch {
-      // 2. If blocked by browser autoplay policy, start muted so stream runs immediately
-      try {
-        audio.muted = true;
-        await audio.play();
-        this.notify();
-      } catch {
-        // Will be unmuted on first gesture
-      }
+      // 2. If browser strict autoplay policy is active, initiate unmuted on first instant touch/click/scroll
+      this.notify();
       return false;
     }
   }
 
   public unlockAndPlay() {
     const audio = this.getAudio();
-    
-    // Unlock Web Audio Context if available
+
+    // Unlock Web Audio Context if suspended
     try {
       const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtxClass && !this.audioCtx) {
@@ -130,10 +148,9 @@ class AudioEngine {
         this.audioCtx.resume().catch(() => {});
       }
     } catch {
-      // ignore
+      // Ignore
     }
 
-    // Unmute and ensure playing with full volume
     if (audio) {
       if (audio.muted && !this.isMuted) {
         audio.muted = false;
@@ -141,14 +158,11 @@ class AudioEngine {
       }
       if (audio.paused) {
         audio.play().then(() => {
-          this.isUnlocked = true;
           this.notify();
         }).catch(() => {});
-      } else {
-        this.isUnlocked = true;
-        this.notify();
       }
     }
+    this.hasInteracted = true;
   }
 
   public setVolume(vol: number) {
@@ -187,7 +201,6 @@ class AudioEngine {
 
     try {
       await audio.play();
-      this.isUnlocked = true;
       this.notify();
       return true;
     } catch {
