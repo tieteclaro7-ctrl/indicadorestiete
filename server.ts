@@ -32,12 +32,12 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", app: "Dashboard de Vendas Tietê Plaza" });
 });
 
-// Dedicated route for 05.mp3 to ensure clean streaming with Range headers for mobile & desktop
-app.get("/05.mp3", (_req, res) => {
-  const filePath = path.join(process.cwd(), "public", "05.mp3");
+// Dedicated routes for audio assets to ensure clean streaming with Range headers for mobile & desktop
+app.get(["/ambient_techno.wav", "/futuristic_anthem.wav", "/05.mp3", "/electronic_anthem.wav"], (_req, res) => {
+  const filePath = path.join(process.cwd(), "public", "ambient_techno.wav");
   res.sendFile(filePath, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": "audio/wav",
       "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=31536000",
     },

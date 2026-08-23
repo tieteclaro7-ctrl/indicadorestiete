@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   ClipboardPen,
@@ -10,14 +10,45 @@ import {
   Calendar,
   CheckCircle2,
   AlertCircle,
-  Info
+  Info,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  Radio
 } from 'lucide-react';
 import { useSales } from '../context/SalesContext';
 import { formatMonthLabel } from '../utils/calculations';
 import { ViewTab } from '../types';
+import { globalAudioEngine } from '../utils/audioPlayer';
 
 export const Header: React.FC = () => {
   const { activeTab, setActiveTab, selectedDate, setSelectedDate, toast } = useSales();
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = globalAudioEngine.subscribe((playing) => {
+      setIsPlaying(playing);
+      setIsMuted(globalAudioEngine.isMutedState());
+    });
+    return () => unsub();
+  }, []);
+
+  const toggleMusic = () => {
+    if (isPlaying) {
+      globalAudioEngine.pause();
+    } else {
+      globalAudioEngine.setMuted(false);
+      globalAudioEngine.play();
+    }
+  };
+
+  const toggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    globalAudioEngine.setMuted(next);
+  };
 
   const navItems: { id: ViewTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -48,8 +79,45 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Date and Status Controls */}
-          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          {/* Quick Controls: Audio + Date */}
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+            {/* Premium Ambient Soundtrack Control Button */}
+            <div className="flex items-center gap-1 bg-red-800/80 px-2 sm:px-2.5 py-1 rounded-lg border border-red-400/40">
+              <button
+                type="button"
+                id="btn-header-toggle-music"
+                onClick={toggleMusic}
+                className="flex items-center gap-1.5 text-[11px] font-bold text-white hover:text-red-100 cursor-pointer"
+                title={isPlaying ? 'Pausar Trilha Sonora Ambient' : 'Tocar Trilha Sonora Ambient Techno'}
+              >
+                {isPlaying && !isMuted ? (
+                  <>
+                    <div className="flex items-end gap-0.5 h-3 w-3">
+                      <span className="w-0.5 bg-emerald-300 rounded-full animate-[bounce_0.6s_infinite_ease-in-out_0.1s] h-full" />
+                      <span className="w-0.5 bg-white rounded-full animate-[bounce_0.8s_infinite_ease-in-out_0.3s] h-3/4" />
+                      <span className="w-0.5 bg-emerald-300 rounded-full animate-[bounce_0.5s_infinite_ease-in-out_0.2s] h-4/5" />
+                    </div>
+                    <span className="font-mono text-[10px] sm:text-[11px]">Trilha Sonora</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3 h-3 text-red-200 fill-red-200" />
+                    <span className="font-mono text-[10px] sm:text-[11px]">Tocar Som</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                id="btn-header-toggle-mute"
+                onClick={toggleMute}
+                className="p-0.5 rounded text-white/80 hover:text-white cursor-pointer ml-1"
+                title={isMuted ? 'Desmutar som' : 'Mutar som'}
+              >
+                {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-300" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
             <div className="flex items-center gap-1.5 bg-red-700/80 px-2.5 sm:px-3 py-1 rounded-lg border border-red-500/50 text-[11px] sm:text-xs font-semibold">
               <Calendar className="w-3.5 h-3.5 text-red-200 shrink-0" />
               <span className="hidden xs:inline">Data:</span>
