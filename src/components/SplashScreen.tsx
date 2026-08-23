@@ -19,72 +19,53 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.9);
   const [isMuted, setIsMuted] = useState(false);
 
   // Subscribe to audio engine state & auto-play on load
   useEffect(() => {
     const unsubscribe = globalAudioEngine.subscribe((playing) => {
       setIsPlaying(playing);
+      setIsMuted(globalAudioEngine.isMutedState());
     });
 
     const timer = setTimeout(() => {
       setIsLoaded(true);
     }, 50);
 
-    // Start playback immediately of the official 05.mp3 track
-    globalAudioEngine.setVolume(volume);
-    globalAudioEngine.play('claro-official-05').then((played) => {
-      setIsPlaying(played);
-    }).catch(() => {
-      setIsPlaying(false);
-    });
-
-    // Gesture listeners for any touch/click/scroll unlocking on mobile browsers
-    const forcePlayOnGesture = () => {
-      if (!globalAudioEngine.isPlaying()) {
-        globalAudioEngine.play('claro-official-05').then(() => {
-          setIsPlaying(true);
-        }).catch(() => {});
+    // Trigger instant auto-play
+    globalAudioEngine.initAndAutoPlay().then((started) => {
+      if (started) {
+        setIsPlaying(true);
       }
-    };
-
-    const events = ['click', 'touchstart', 'touchend', 'pointerdown', 'mousedown', 'keydown', 'scroll'];
-    events.forEach((evt) => {
-      window.addEventListener(evt, forcePlayOnGesture, { capture: true, passive: true });
-      document.addEventListener(evt, forcePlayOnGesture, { capture: true, passive: true });
     });
 
     return () => {
       clearTimeout(timer);
       unsubscribe();
-      events.forEach((evt) => {
-        window.removeEventListener(evt, forcePlayOnGesture, { capture: true });
-        document.removeEventListener(evt, forcePlayOnGesture, { capture: true });
-      });
     };
   }, []);
 
-  // Volume sync
-  useEffect(() => {
-    globalAudioEngine.setVolume(isMuted ? 0 : volume);
-  }, [volume, isMuted]);
-
-  const togglePlayPause = (e?: React.MouseEvent) => {
+  const togglePlayPause = (e?: React.MouseEvent | React.TouchEvent) => {
     e?.stopPropagation();
     if (isPlaying) {
       globalAudioEngine.pause();
     } else {
-      globalAudioEngine.play('claro-official-05');
+      globalAudioEngine.setMuted(false);
+      setIsMuted(false);
+      globalAudioEngine.play();
     }
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
+  const toggleMute = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
-    setIsMuted(!isMuted);
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    globalAudioEngine.setMuted(nextMuted);
   };
 
-  const handleEnter = () => {
+  const handleEnter = (e?: React.MouseEvent | React.TouchEvent) => {
+    e?.stopPropagation();
+    globalAudioEngine.unlockAndPlay();
     globalAudioEngine.fadeOutAndStop(350);
     setIsExiting(true);
     setTimeout(() => {
@@ -96,11 +77,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
     <div
       id="splash-screen-container"
       onClick={() => {
-        if (!isPlaying) {
-          globalAudioEngine.play('claro-official-05');
-        }
+        globalAudioEngine.unlockAndPlay();
       }}
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-center p-3 sm:p-4 select-none overflow-hidden transition-all duration-400 bg-[#060002] ${
+      onTouchStart={() => {
+        globalAudioEngine.unlockAndPlay();
+      }}
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-between sm:justify-center p-4 sm:p-6 select-none overflow-y-auto overflow-x-hidden transition-all duration-400 bg-[#060002] ${
         isExiting ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'
       }`}
     >
@@ -129,19 +111,20 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
       </div>
 
       {/* Top Floating Music Bar: Clean Single Pill Control */}
-      <div className="absolute top-3 sm:top-5 right-3 sm:right-5 z-30 flex items-center gap-2">
+      <div className="w-full flex items-center justify-end z-30 pt-1 sm:pt-0 sm:absolute sm:top-5 sm:right-5 gap-2">
         <button
           type="button"
           id="btn-splash-toggle-music"
           onClick={togglePlayPause}
+          onTouchEnd={togglePlayPause}
           className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-full backdrop-blur-xl text-white text-xs font-bold transition-all cursor-pointer shadow-lg active:scale-95 group border ${
-            isPlaying
+            isPlaying && !isMuted
               ? 'bg-red-600/85 border-red-400 shadow-[0_0_20px_rgba(234,29,44,0.4)]'
               : 'bg-black/70 border-white/20 hover:bg-black/90'
           }`}
           title={isPlaying ? 'Pausar música' : 'Tocar música'}
         >
-          {isPlaying ? (
+          {isPlaying && !isMuted ? (
             <>
               {/* Equalizer bars */}
               <div className="flex items-end gap-0.5 h-3.5 w-3.5">
@@ -165,6 +148,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
           type="button"
           id="btn-splash-toggle-mute"
           onClick={toggleMute}
+          onTouchEnd={toggleMute}
           className="p-2 rounded-full backdrop-blur-xl bg-black/70 text-white/80 border border-white/20 hover:bg-black/90 transition-all cursor-pointer"
           title={isMuted ? 'Desmutar som' : 'Silenciar som'}
         >
@@ -172,10 +156,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
         </button>
       </div>
 
-      {/* Main Holographic Business Card */}
-      <div className="relative z-10 flex flex-col items-center max-w-xl w-full text-center px-2 sm:px-4">
+      {/* Main Holographic Business Card (Proportional & Responsive for Mobile) */}
+      <div className="relative z-10 flex flex-col items-center justify-center max-w-lg w-full text-center my-auto px-2 sm:px-4">
         <div
-          className={`w-full relative p-5 sm:p-8 rounded-3xl bg-black/40 backdrop-blur-2xl border border-red-500/30 shadow-[0_25px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(234,29,44,0.2)] transition-all duration-700 transform ${
+          className={`w-full relative p-5 sm:p-8 rounded-3xl bg-black/50 backdrop-blur-2xl border border-red-500/30 shadow-[0_25px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(234,29,44,0.2)] transition-all duration-700 transform ${
             isLoaded ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-6'
           }`}
         >
@@ -193,37 +177,38 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
               src={claroLogoImg}
               alt="Claro"
               referrerPolicy="no-referrer"
-              className="relative w-56 sm:w-80 md:w-96 h-auto object-contain rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.6)] border border-white/20"
+              className="relative w-48 sm:w-72 md:w-80 max-h-44 object-contain rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.6)] border border-white/20"
             />
           </div>
 
           {/* Titles */}
           <div className="flex flex-col items-center">
-            <h2 className="text-xl sm:text-3xl md:text-4xl font-black text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]">
+            <h2 className="text-xl sm:text-3xl font-black text-white tracking-tight drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] leading-tight">
               Bem-vindo à Loja Claro
             </h2>
-            <p className="text-lg sm:text-2xl font-bold text-red-400 tracking-wide mt-1 drop-shadow-md">
+            <p className="text-base sm:text-xl font-bold text-red-400 tracking-wide mt-1 drop-shadow-md">
               Shopping Tietê Plaza
             </p>
 
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-950/60 border border-red-500/40 text-red-200 text-[11px] sm:text-xs font-bold tracking-wider mt-3 sm:mt-4 backdrop-blur-md shadow-[0_0_15px_rgba(234,29,44,0.3)]">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/60 border border-red-500/40 text-red-200 text-[10px] sm:text-xs font-bold tracking-wider mt-2.5 sm:mt-4 backdrop-blur-md shadow-[0_0_15px_rgba(234,29,44,0.3)]">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <span className="font-mono">SISTEMA DE INDICADORES</span>
             </div>
           </div>
 
           {/* Action Button: ENTRAR */}
-          <div className="mt-6 sm:mt-8 w-full flex flex-col items-center">
+          <div className="mt-5 sm:mt-7 w-full flex flex-col items-center">
             <button
               id="btn-splash-entrar"
               onClick={handleEnter}
-              className="group relative w-full sm:w-80 py-3.5 sm:py-4 px-6 sm:px-8 bg-gradient-to-r from-white via-slate-100 to-white hover:from-white hover:to-slate-200 text-red-600 hover:text-red-700 font-black text-lg sm:text-xl rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.6),0_0_30px_rgba(234,29,44,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.8),0_0_40px_rgba(234,29,44,0.6)] transition-all transform hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-3 cursor-pointer border border-white"
+              onTouchEnd={handleEnter}
+              className="group relative w-full sm:w-72 py-3.5 sm:py-4 px-6 sm:px-8 bg-gradient-to-r from-white via-slate-100 to-white hover:from-white hover:to-slate-200 text-red-600 hover:text-red-700 font-black text-base sm:text-xl rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.6),0_0_30px_rgba(234,29,44,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.8),0_0_40px_rgba(234,29,44,0.6)] transition-all transform hover:-translate-y-1 active:translate-y-0 flex items-center justify-center gap-3 cursor-pointer border border-white"
             >
               <span className="tracking-wider">ENTRAR</span>
               <LogIn className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:translate-x-2 text-red-600" />
             </button>
 
-            <p className="text-white/60 text-[11px] sm:text-xs font-mono mt-3 flex items-center gap-1.5">
+            <p className="text-white/60 text-[10px] sm:text-xs font-mono mt-2.5 flex items-center gap-1.5">
               Toque em ENTRAR para acessar o dashboard
             </p>
           </div>
@@ -231,7 +216,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
       </div>
 
       {/* Corporate Footer on Splash */}
-      <div className="absolute bottom-3 text-center text-white/50 text-[10px] sm:text-[11px] font-mono tracking-wider z-20">
+      <div className="text-center text-white/50 text-[10px] sm:text-[11px] font-mono tracking-wider z-20 pb-2 sm:pb-0 sm:absolute sm:bottom-3">
         CLARO BRASIL • SHOPPING TIETÊ PLAZA • SISTEMA INTERNO
       </div>
     </div>

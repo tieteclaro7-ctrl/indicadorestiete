@@ -32,6 +32,21 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", app: "Dashboard de Vendas Tietê Plaza" });
 });
 
+// Dedicated route for 05.mp3 to ensure clean streaming with Range headers for mobile & desktop
+app.get("/05.mp3", (_req, res) => {
+  const filePath = path.join(process.cwd(), "public", "05.mp3");
+  res.sendFile(filePath, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "public, max-age=31536000",
+    },
+  });
+});
+
+app.use(express.static(path.join(process.cwd(), "public")));
+app.use("/assets", express.static(path.join(process.cwd(), "src", "assets")));
+
 // API endpoint for AI sales projection & intelligent insights
 app.post("/api/analyze", async (req, res) => {
   try {

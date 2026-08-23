@@ -38,7 +38,6 @@ import {
   formatMonthLabel
 } from '../utils/calculations';
 import { FilterBar } from './FilterBar';
-import { StoreGoalsPanel } from './StoreGoalsPanel';
 
 export const DashboardView: React.FC = () => {
   const { database, filters, setFilters, setActiveTab } = useSales();
@@ -95,9 +94,6 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Meta Geral da Loja por Indicador */}
-      <StoreGoalsPanel />
 
       {/* Filter Bar */}
       <FilterBar />
