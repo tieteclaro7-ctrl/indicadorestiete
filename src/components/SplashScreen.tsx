@@ -127,7 +127,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
 
             <p className="text-white/60 text-[11px] font-mono mt-3 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-red-400" />
-              Clique em ENTRAR para iniciar o painel com trilha sonora
+              Clique em ENTRAR para iniciar o painel de registro de indicadores da loja.
             </p>
           </div>
         </div>
