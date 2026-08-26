@@ -64,6 +64,7 @@ export type ViewTab =
   | 'monthly-evolution'
   | 'ai-projection'
   | 'reports'
+  | 'radio-mix'
   | 'settings';
 
 export interface KPIStats {

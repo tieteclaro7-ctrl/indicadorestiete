@@ -46,15 +46,26 @@ export const DailyEntryGrid: React.FC = () => {
   const activeSellers = database.sellers.filter((s) => s.active);
 
   // Real-time calculation of row totals, column totals, and grand total
-  const { rowTotals, columnTotals, categoryTotals, grandTotal } = React.useMemo(() => {
+  // Note: Category subtotals (TOTAL GROSS, TOTAL M-PLAY, etc.) are computed separately
+  // and MUST NOT be added into the bottom vertical column totals or grand total (preventing double-counting).
+  const { rowTotals, columnTotals, categoryTotals, categorySellerTotals, grandTotal } = React.useMemo(() => {
     const rTotals: Record<string, number> = {};
     const cTotals: Record<string, number> = {};
     const catTotals: Record<string, number> = {};
+    const catSellerTotals: Record<string, Record<string, number>> = {};
     let gTotal = 0;
 
-    activeSellers.forEach((s) => (cTotals[s.id] = 0));
+    activeSellers.forEach((s) => {
+      cTotals[s.id] = 0;
+    });
     ALL_INDICATORS.forEach((i) => (rTotals[i.id] = 0));
-    CATEGORIES.forEach((c) => (catTotals[c.id] = 0));
+    CATEGORIES.forEach((c) => {
+      catTotals[c.id] = 0;
+      catSellerTotals[c.id] = {};
+      activeSellers.forEach((s) => {
+        catSellerTotals[c.id][s.id] = 0;
+      });
+    });
 
     CATEGORIES.forEach((cat) => {
       cat.indicators.forEach((ind) => {
@@ -62,7 +73,9 @@ export const DailyEntryGrid: React.FC = () => {
         activeSellers.forEach((s) => {
           const val = Number(currentDailyEntry.values?.[ind.id]?.[s.id]) || 0;
           indSum += val;
+          // Sum individual indicator values only for the vertical column totals
           cTotals[s.id] = (cTotals[s.id] || 0) + val;
+          catSellerTotals[cat.id][s.id] = (catSellerTotals[cat.id][s.id] || 0) + val;
           gTotal += val;
         });
         rTotals[ind.id] = indSum;
@@ -70,7 +83,7 @@ export const DailyEntryGrid: React.FC = () => {
       });
     });
 
-    return { rowTotals: rTotals, columnTotals: cTotals, categoryTotals: catTotals, grandTotal: gTotal };
+    return { rowTotals: rTotals, columnTotals: cTotals, categoryTotals: catTotals, categorySellerTotals: catSellerTotals, grandTotal: gTotal };
   }, [currentDailyEntry, activeSellers]);
 
   const handleSave = () => {
@@ -357,10 +370,7 @@ export const DailyEntryGrid: React.FC = () => {
                     TOTAL {category.name}
                   </td>
                   {activeSellers.map((seller) => {
-                    let sellerCatSum = 0;
-                    category.indicators.forEach((ind) => {
-                      sellerCatSum += Number(currentDailyEntry.values?.[ind.id]?.[seller.id]) || 0;
-                    });
+                    const sellerCatSum = categorySellerTotals[category.id]?.[seller.id] || 0;
                     return (
                       <td
                         key={seller.id}

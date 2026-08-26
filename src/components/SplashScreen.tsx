@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   LogIn,
   Activity,
-  Cpu,
+  Radio,
   Sparkles,
 } from 'lucide-react';
 import claroLogoImg from '../assets/images/claro_splash_logo_1787398577283.jpg';
@@ -27,14 +27,13 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
     };
   }, []);
 
-  // Audio trigger: starts ONLY and IMMEDIATELY upon clicking/tapping "ENTRAR"
+  // Enter trigger: start Radio Mix FM streaming & transition smoothly into Dashboard
   const handleEnter = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     
-    // 1. Immediately start the Ambient Techno track directly in the user gesture event
-    globalAudioEngine.playOnEnterGesture();
+    // Auto-start Radio Mix FM stream immediately upon user gesture
+    globalAudioEngine.play();
 
-    // 2. Perform smooth UI transition into the Dashboard
     setIsExiting(true);
     setTimeout(() => {
       onEnter();
@@ -67,8 +66,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
         </div>
         <span>•</span>
         <div className="flex items-center gap-1.5">
-          <Cpu className="w-3.5 h-3.5 text-red-400" />
-          <span>AMBIENT TECHNO • AMBIÊNCIA 5G</span>
+          <Radio className="w-3.5 h-3.5 text-red-400" />
+          <span>RÁDIO MIX FM 106.3 • SÃO PAULO</span>
         </div>
       </div>
 

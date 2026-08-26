@@ -9,11 +9,13 @@ import { MonthlyEvolutionView } from './components/MonthlyEvolutionView';
 import { AiProjectionView } from './components/AiProjectionView';
 import { ReportsView } from './components/ReportsView';
 import { SplashScreen } from './components/SplashScreen';
+import { RadioMixPlayer } from './components/RadioMixPlayer';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { activeTab, toast } = useSales();
   const [hasEntered, setHasEntered] = useState<boolean>(false);
+  const [isRadioOpen, setIsRadioOpen] = useState<boolean>(false);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-red-500 selection:text-white">
@@ -22,8 +24,17 @@ const AppContent: React.FC = () => {
         <SplashScreen onEnter={() => setHasEntered(true)} />
       )}
 
-      {/* Navigation Header */}
-      <Header />
+      {/* Navigation Header with Radio Mix FM toggle */}
+      <Header
+        onToggleRadio={() => setIsRadioOpen((prev) => !prev)}
+        isRadioOpen={isRadioOpen}
+      />
+
+      {/* Radio Mix FM Player Modal */}
+      <RadioMixPlayer
+        isOpen={isRadioOpen}
+        onClose={() => setIsRadioOpen(false)}
+      />
 
       {/* Main View Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-6">
@@ -34,6 +45,24 @@ const AppContent: React.FC = () => {
         {activeTab === 'monthly-evolution' && <MonthlyEvolutionView />}
         {activeTab === 'ai-projection' && <AiProjectionView />}
         {activeTab === 'reports' && <ReportsView />}
+        {activeTab === 'radio-mix' && (
+          <div className="space-y-6 pb-12">
+            <div className="bg-gradient-to-r from-red-600 to-rose-700 rounded-2xl p-5 text-white shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-bold uppercase tracking-wider mb-1">
+                  STREAMING AO VIVO
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight">
+                  RÁDIO MIX FM 106.3 • SÃO PAULO
+                </h2>
+                <p className="text-xs sm:text-sm text-red-100 mt-0.5">
+                  Transmissão oficial ao vivo integrada para a equipe Claro Tietê Plaza.
+                </p>
+              </div>
+            </div>
+            <RadioMixPlayer isEmbedded={true} />
+          </div>
+        )}
       </main>
 
       {/* Global Toast Notification */}

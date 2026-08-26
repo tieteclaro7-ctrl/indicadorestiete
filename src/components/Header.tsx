@@ -11,43 +11,42 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
-  Volume2,
-  VolumeX,
+  Radio,
   Play,
   Pause,
-  Radio
+  Volume2,
+  VolumeX,
+  Maximize2,
 } from 'lucide-react';
 import { useSales } from '../context/SalesContext';
 import { formatMonthLabel } from '../utils/calculations';
 import { ViewTab } from '../types';
-import { globalAudioEngine } from '../utils/audioPlayer';
+import { globalAudioEngine, RadioState } from '../utils/audioPlayer';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onToggleRadio?: () => void;
+  isRadioOpen?: boolean;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = false }) => {
   const { activeTab, setActiveTab, selectedDate, setSelectedDate, toast } = useSales();
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [radioState, setRadioState] = useState<RadioState>(globalAudioEngine.getState());
 
   useEffect(() => {
-    const unsub = globalAudioEngine.subscribe((playing) => {
-      setIsPlaying(playing);
-      setIsMuted(globalAudioEngine.isMutedState());
+    const unsub = globalAudioEngine.subscribe((state) => {
+      setRadioState(state);
     });
     return () => unsub();
   }, []);
 
-  const toggleMusic = () => {
-    if (isPlaying) {
-      globalAudioEngine.pause();
-    } else {
-      globalAudioEngine.setMuted(false);
-      globalAudioEngine.play();
-    }
+  const handleTogglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    globalAudioEngine.toggle();
   };
 
-  const toggleMute = () => {
-    const next = !isMuted;
-    setIsMuted(next);
-    globalAudioEngine.setMuted(next);
+  const handleToggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    globalAudioEngine.toggleMute();
   };
 
   const navItems: { id: ViewTab; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -58,13 +57,14 @@ export const Header: React.FC = () => {
     { id: 'monthly-evolution', label: 'Evolução Mensal', icon: TrendingUp },
     { id: 'ai-projection', label: 'Análise IA', icon: BrainCircuit },
     { id: 'reports', label: 'Relatórios & PDF', icon: FileText },
+    { id: 'radio-mix', label: 'Rádio Mix FM', icon: Radio },
   ];
 
   return (
     <header id="main-header" className="bg-white border-b border-zinc-200 sticky top-0 z-40 shadow-xs">
       {/* Top red header bar */}
       <div className="bg-red-600 text-white px-3 sm:px-6 py-2.5">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
           <div className="flex items-center gap-2.5 sm:gap-3">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center text-red-600 font-black text-base sm:text-lg shadow-sm shrink-0">
               C
@@ -79,45 +79,107 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick Controls: Audio + Date */}
-          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
-            {/* Premium Ambient Soundtrack Control Button */}
-            <div className="flex items-center gap-1 bg-red-800/80 px-2 sm:px-2.5 py-1 rounded-lg border border-red-400/40">
+          {/* Quick Controls: Radio Mix Player + Date */}
+          <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 flex-wrap">
+            {/* RÁDIO MIX FM 106.3 SP LIVE HEADER BAR CONTROLLER */}
+            <div
+              id="header-radio-mix-controller"
+              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-xl border transition-all shadow-sm ${
+                radioState.isPlaying && !radioState.isMuted
+                  ? 'bg-zinc-950 text-white border-red-500/60 shadow-[0_0_15px_rgba(234,29,44,0.35)]'
+                  : 'bg-red-800/90 text-white border-red-400/50'
+              }`}
+            >
+              {/* Play / Pause Toggle Button */}
               <button
                 type="button"
-                id="btn-header-toggle-music"
-                onClick={toggleMusic}
-                className="flex items-center gap-1.5 text-[11px] font-bold text-white hover:text-red-100 cursor-pointer"
-                title={isPlaying ? 'Pausar Trilha Sonora Ambient' : 'Tocar Trilha Sonora Ambient Techno'}
+                id="btn-radio-play-pause-header"
+                onClick={handleTogglePlay}
+                className={`p-1 rounded-lg transition-colors cursor-pointer flex items-center justify-center ${
+                  radioState.isPlaying
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-sm'
+                    : 'bg-white text-red-600 hover:bg-red-50 shadow-sm'
+                }`}
+                title={radioState.isPlaying ? 'Pausar Rádio Mix FM' : 'Tocar Rádio Mix FM Ao Vivo'}
               >
-                {isPlaying && !isMuted ? (
-                  <>
-                    <div className="flex items-end gap-0.5 h-3 w-3">
-                      <span className="w-0.5 bg-emerald-300 rounded-full animate-[bounce_0.6s_infinite_ease-in-out_0.1s] h-full" />
-                      <span className="w-0.5 bg-white rounded-full animate-[bounce_0.8s_infinite_ease-in-out_0.3s] h-3/4" />
-                      <span className="w-0.5 bg-emerald-300 rounded-full animate-[bounce_0.5s_infinite_ease-in-out_0.2s] h-4/5" />
-                    </div>
-                    <span className="font-mono text-[10px] sm:text-[11px]">Trilha Sonora</span>
-                  </>
+                {radioState.isPlaying ? (
+                  <Pause className="w-3.5 h-3.5 fill-current" />
                 ) : (
-                  <>
-                    <Play className="w-3 h-3 text-red-200 fill-red-200" />
-                    <span className="font-mono text-[10px] sm:text-[11px]">Tocar Som</span>
-                  </>
+                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                 )}
               </button>
 
+              {/* Station Label & Live Waves */}
+              <div
+                className="flex items-center gap-1.5 cursor-pointer select-none"
+                onClick={onToggleRadio}
+                title="Clique para abrir controles detalhados"
+              >
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1">
+                    <span className="font-extrabold text-[11px] sm:text-xs tracking-tight text-white uppercase leading-none">
+                      Mix FM 106.3
+                    </span>
+                    <span className="bg-red-500 text-white text-[9px] font-black px-1 py-0.2 rounded-xs uppercase tracking-wider">
+                      SP
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-red-200 font-medium leading-tight flex items-center gap-1">
+                    {radioState.isPlaying ? (
+                      <>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                        <span className="text-emerald-300 font-bold">Ao Vivo</span>
+                      </>
+                    ) : (
+                      <span>Clique ▶ p/ Tocar</span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Animated Equalizer Waveform */}
+                {radioState.isPlaying && !radioState.isMuted && (
+                  <div className="flex items-end gap-0.5 h-3.5 w-3.5 ml-1">
+                    <span className="w-0.5 bg-emerald-400 rounded-full animate-[bounce_0.6s_infinite_ease-in-out_0.1s] h-full" />
+                    <span className="w-0.5 bg-red-400 rounded-full animate-[bounce_0.8s_infinite_ease-in-out_0.3s] h-3/4" />
+                    <span className="w-0.5 bg-emerald-400 rounded-full animate-[bounce_0.5s_infinite_ease-in-out_0.2s] h-4/5" />
+                  </div>
+                )}
+              </div>
+
+              {/* Mute Button */}
               <button
                 type="button"
-                id="btn-header-toggle-mute"
-                onClick={toggleMute}
-                className="p-0.5 rounded text-white/80 hover:text-white cursor-pointer ml-1"
-                title={isMuted ? 'Desmutar som' : 'Mutar som'}
+                id="btn-radio-mute-header"
+                onClick={handleToggleMute}
+                className="p-1 rounded-md text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer ml-0.5"
+                title={radioState.isMuted ? 'Desmutar rádio' : 'Mutar rádio'}
               >
-                {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-300" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {radioState.isMuted ? (
+                  <VolumeX className="w-3.5 h-3.5 text-red-300" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 text-white" />
+                )}
               </button>
+
+              {/* Expand / Popup Button */}
+              {onToggleRadio && (
+                <button
+                  type="button"
+                  id="btn-radio-expand-header"
+                  onClick={onToggleRadio}
+                  className={`p-1 rounded-md transition-colors cursor-pointer ml-0.5 ${
+                    isRadioOpen
+                      ? 'bg-white/20 text-white'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                  title="Abrir player visual completo"
+                >
+                  <Maximize2 className="w-3 h-3" />
+                </button>
+              )}
             </div>
 
+            {/* Date Input */}
             <div className="flex items-center gap-1.5 bg-red-700/80 px-2.5 sm:px-3 py-1 rounded-lg border border-red-500/50 text-[11px] sm:text-xs font-semibold">
               <Calendar className="w-3.5 h-3.5 text-red-200 shrink-0" />
               <span className="hidden xs:inline">Data:</span>
@@ -190,3 +252,4 @@ export const Header: React.FC = () => {
     </header>
   );
 };
+
