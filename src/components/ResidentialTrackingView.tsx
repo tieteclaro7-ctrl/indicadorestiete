@@ -322,62 +322,68 @@ export const ResidentialTrackingView: React.FC = () => {
       />
 
       {/* Top Banner & Action Header */}
-      <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-3xl p-5 sm:p-7 text-white shadow-lg border border-red-500/30 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-black uppercase tracking-wider">
+      <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-red-500/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {/* Left info column */}
+        <div className="space-y-1.5 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/20 text-white font-black uppercase tracking-wider text-[11px]">
               <Home className="w-3.5 h-3.5" />
               MÓDULO RESIDENCIAL
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/25 text-red-100 text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/25 text-red-100 font-bold text-[11px]">
               Instalações & Contratos
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/25 text-red-100 text-[11px] font-medium">
-              <Clock className="w-3 h-3" />
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/25 text-red-100 font-medium text-[11px]">
+              <Clock className="w-3 h-3 text-red-200" />
               Última sincronização: {getLastSyncTime()}
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2.5">
+
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white leading-tight">
             Acompanhamento de Vendas Residencial
           </h2>
-          <p className="text-xs sm:text-sm text-red-100 font-medium">
+          <p className="text-xs sm:text-sm text-red-100 font-normal leading-relaxed max-w-2xl">
             Planilha integrada para controle de instalações, períodos, serviços e acompanhamento de conexões Claro Fibra.
           </p>
         </div>
 
-        {/* Primary Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Right action button group (always aligned in one clean row) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 self-start lg:self-center">
           <button
             type="button"
             id="btn-new-residential-sale"
             onClick={handleOpenNewModal}
-            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-extrabold px-4 py-2.5 rounded-xl shadow-md transition-all text-xs sm:text-sm cursor-pointer"
+            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black px-4 py-2.5 rounded-xl shadow-sm hover:shadow transition-all text-xs sm:text-sm cursor-pointer whitespace-nowrap"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4 stroke-[3]" />
             <span>NOVA VENDA RESIDENCIAL</span>
           </button>
 
-          <button
-            type="button"
-            id="btn-print-residential"
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/40 text-white font-bold px-3 py-2.5 rounded-xl transition-all text-xs cursor-pointer border border-white/15"
-            title="Imprimir visualização formatada"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="hidden sm:inline">IMPRIMIR</span>
-          </button>
+          <div className="flex items-center gap-1.5 bg-black/25 p-1 rounded-xl border border-white/15">
+            <button
+              type="button"
+              id="btn-print-residential"
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 hover:bg-white/15 text-white font-bold px-3 py-1.5 rounded-lg transition-all text-xs cursor-pointer whitespace-nowrap"
+              title="Imprimir visualização formatada"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>IMPRIMIR</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-pdf-residential"
-            onClick={handleGeneratePDF}
-            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/40 text-white font-bold px-3 py-2.5 rounded-xl transition-all text-xs cursor-pointer border border-white/15"
-            title="Gerar e baixar relatório em PDF"
-          >
-            <FileDown className="w-4 h-4" />
-            <span className="hidden sm:inline">GERAR PDF</span>
-          </button>
+            <div className="w-px h-4 bg-white/20" />
+
+            <button
+              type="button"
+              id="btn-pdf-residential"
+              onClick={handleGeneratePDF}
+              className="flex items-center gap-1.5 hover:bg-white/15 text-white font-bold px-3 py-1.5 rounded-lg transition-all text-xs cursor-pointer whitespace-nowrap"
+              title="Gerar e baixar relatório em PDF"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>GERAR PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
