@@ -47,9 +47,9 @@ export const INITIAL_RESIDENTIAL_SALES: ResidentialSale[] = [
     service: 'Fibra 750 Mega',
     secondPointVirtua: 'SIM',
     cpf: '412.783.921-55',
-    status: 'CONECTADO',
+    status: 'PENDENTE',
     sellerName: 'LUCAS RODRIGUES',
-    notes: '2º Ponto configurado na sala de TV.',
+    notes: 'Aguardando equipe técnica externa.',
     createdAt: '2026-08-28T10:15:00.000Z',
     updatedAt: '2026-08-28T14:20:00.000Z',
   },
@@ -81,7 +81,7 @@ export const INITIAL_RESIDENTIAL_SALES: ResidentialSale[] = [
     cpf: '185.632.490-44',
     status: 'DESCONECTADO',
     sellerName: 'GABRIEL SOUZA',
-    notes: 'Cliente ausente no endereço. Reagendamento solicitado.',
+    notes: 'Cliente ausente no endereço. Quebra de instalação.',
     createdAt: '2026-08-30T08:45:00.000Z',
     updatedAt: '2026-08-30T11:50:00.000Z',
   },
@@ -95,9 +95,9 @@ export const INITIAL_RESIDENTIAL_SALES: ResidentialSale[] = [
     service: 'Fibra 500 Mega',
     secondPointVirtua: 'NÃO',
     cpf: '523.109.847-33',
-    status: 'CONECTADO',
+    status: 'PENDENTE',
     sellerName: 'ISABELA LIMA',
-    notes: 'Adesão conjunta Solar + M-Play.',
+    notes: 'Adesão conjunta Solar + M-Play agendada.',
     createdAt: '2026-08-31T09:10:00.000Z',
     updatedAt: '2026-08-31T13:40:00.000Z',
   },
@@ -111,9 +111,9 @@ export const INITIAL_RESIDENTIAL_SALES: ResidentialSale[] = [
     service: 'Fibra 750 Mega',
     secondPointVirtua: 'SIM',
     cpf: '371.492.650-89',
-    status: 'DESCONECTADO',
+    status: 'CONECTADO',
     sellerName: 'FELIPE COSTA',
-    notes: 'Problema na tubulação predial para passagem da fibra.',
+    notes: 'Instalação concluída.',
     createdAt: '2026-08-31T14:00:00.000Z',
     updatedAt: '2026-08-31T17:10:00.000Z',
   },
@@ -132,6 +132,13 @@ export function formatCPF(value: string): string {
 export function formatContract(value: string): string {
   // Allow free typing as requested
   return value.trim();
+}
+
+// Next Status Cycle: PENDENTE -> CONECTADO -> DESCONECTADO -> PENDENTE
+export function getNextResidentialStatus(current: string): 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO' {
+  if (current === 'PENDENTE') return 'CONECTADO';
+  if (current === 'CONECTADO') return 'DESCONECTADO';
+  return 'PENDENTE';
 }
 
 // Get all sales from localStorage (strictly isolated)
@@ -168,6 +175,7 @@ export function saveResidentialSales(sales: ResidentialSale[]): boolean {
 
 // Compute Summary Metrics based on records
 export function calculateResidentialSummary(sales: ResidentialSale[]): ResidentialSummary {
+  let pending = 0;
   let connected = 0;
   let disconnected = 0;
   let solar = 0;
@@ -175,8 +183,10 @@ export function calculateResidentialSummary(sales: ResidentialSale[]): Residenti
   let secondPoint = 0;
 
   sales.forEach((s) => {
-    if (s.status === 'CONECTADO') connected++;
-    if (s.status === 'DESCONECTADO') disconnected++;
+    if (s.status === 'PENDENTE') pending++;
+    else if (s.status === 'CONECTADO') connected++;
+    else if (s.status === 'DESCONECTADO') disconnected++;
+
     if (s.solar === 'SIM') solar++;
     if (s.mplay === 'SIM') mplay++;
     if (s.secondPointVirtua === 'SIM') secondPoint++;
@@ -184,6 +194,7 @@ export function calculateResidentialSummary(sales: ResidentialSale[]): Residenti
 
   return {
     totalInstallations: sales.length,
+    pendingCount: pending,
     connectedCount: connected,
     disconnectedCount: disconnected,
     solarCount: solar,

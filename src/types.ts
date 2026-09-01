@@ -70,7 +70,7 @@ export type ViewTab =
 
 export type ResidentialPeriod = '8:00 às 12:00' | '12:00 às 15:00' | '15:00 às 18:00';
 export type YesNoOption = 'SIM' | 'NÃO';
-export type ResidentialStatus = 'CONECTADO' | 'DESCONECTADO';
+export type ResidentialStatus = 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO';
 
 export interface ResidentialSale {
   id: string;
@@ -82,7 +82,7 @@ export interface ResidentialSale {
   service: string; // Ex: 'Fibra 350 Mega', 'Fibra 500 Mega', 'Fibra 750 Mega', 'Fibra 1 Giga'
   secondPointVirtua: YesNoOption; // 'SIM' | 'NÃO'
   cpf: string; // 000.000.000-00
-  status: ResidentialStatus; // 'CONECTADO' | 'DESCONECTADO'
+  status: ResidentialStatus; // 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO'
   sellerName?: string;
   notes?: string;
   createdAt: string;
@@ -98,11 +98,12 @@ export interface ResidentialFilterState {
   mplay: string; // 'all' | 'SIM' | 'NÃO'
   secondPointVirtua: string; // 'all' | 'SIM' | 'NÃO'
   service: string;
-  status: string; // 'all' | 'CONECTADO' | 'DESCONECTADO'
+  status: string; // 'all' | 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO'
 }
 
 export interface ResidentialSummary {
   totalInstallations: number;
+  pendingCount: number;
   connectedCount: number;
   disconnectedCount: number;
   solarCount: number;

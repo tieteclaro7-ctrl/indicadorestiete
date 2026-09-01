@@ -43,6 +43,7 @@ import {
   importResidentialSalesJSON,
   formatCPF,
   formatContract,
+  getNextResidentialStatus,
   PERIOD_OPTIONS,
   COMMON_RESIDENTIAL_SERVICES,
 } from '../utils/residentialStorage';
@@ -83,7 +84,7 @@ export const ResidentialTrackingView: React.FC = () => {
   const [formService, setFormService] = useState<string>('Fibra 500 Mega');
   const [formSecondPointVirtua, setFormSecondPointVirtua] = useState<YesNoOption>('NÃO');
   const [formCpf, setFormCpf] = useState<string>('');
-  const [formStatus, setFormStatus] = useState<ResidentialStatus>('CONECTADO');
+  const [formStatus, setFormStatus] = useState<ResidentialStatus>('PENDENTE');
   const [formSellerName, setFormSellerName] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
 
@@ -120,7 +121,7 @@ export const ResidentialTrackingView: React.FC = () => {
     setFormService('Fibra 500 Mega');
     setFormSecondPointVirtua('NÃO');
     setFormCpf('');
-    setFormStatus('CONECTADO');
+    setFormStatus('PENDENTE');
     setFormSellerName('');
     setFormNotes('');
     setIsFormModalOpen(true);
@@ -207,10 +208,9 @@ export const ResidentialTrackingView: React.FC = () => {
     setIsFormModalOpen(false);
   };
 
-  // Toggle Status directly by clicking the status badge in the table
+  // Toggle Status directly by clicking the status badge in the table: PENDENTE -> CONECTADO -> DESCONECTADO -> PENDENTE
   const handleToggleStatus = (sale: ResidentialSale) => {
-    const nextStatus: ResidentialStatus =
-      sale.status === 'CONECTADO' ? 'DESCONECTADO' : 'CONECTADO';
+    const nextStatus = getNextResidentialStatus(sale.status);
 
     const updated = sales.map((item) => {
       if (item.id === sale.id) {
@@ -226,7 +226,7 @@ export const ResidentialTrackingView: React.FC = () => {
     updateSalesList(updated);
     showToast(
       `Status do contrato ${sale.contract} alterado para ${nextStatus}!`,
-      nextStatus === 'CONECTADO' ? 'success' : 'info'
+      nextStatus === 'CONECTADO' ? 'success' : nextStatus === 'PENDENTE' ? 'info' : 'warning'
     );
   };
 
@@ -381,12 +381,12 @@ export const ResidentialTrackingView: React.FC = () => {
       {/* ========================================================================= */}
       {/* SUMMARY / RESUMO METRICS CARDS                                            */}
       {/* ========================================================================= */}
-      <div id="residential-summary-cards" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      <div id="residential-summary-cards" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
         {/* TOTAL INSTALAÇÕES */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
-              TOTAL INSTALAÇÕES
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+              TOTAL
             </span>
             <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
               <Hash className="w-4 h-4" />
@@ -399,15 +399,41 @@ export const ResidentialTrackingView: React.FC = () => {
             <span className="text-[11px] text-slate-500 font-semibold">vendas</span>
           </div>
           <div className="text-[10px] text-slate-500 font-medium mt-1">
-            {sales.length !== filteredSales.length ? `Filtradas de ${sales.length}` : 'Registradas no total'}
+            {sales.length !== filteredSales.length ? `Filtradas (${sales.length} total)` : 'Total registrado'}
+          </div>
+        </div>
+
+        {/* PENDENTES */}
+        <div className="bg-blue-50/70 rounded-2xl p-4 border border-blue-200 shadow-xs flex flex-col justify-between hover:border-blue-300 transition-all">
+          <div className="flex items-center justify-between text-blue-700 mb-1">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse inline-block" />
+              PENDENTES
+            </span>
+            <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-2xl sm:text-3xl font-black text-blue-700 tracking-tight">
+              {summary.pendingCount}
+            </span>
+            <span className="text-[11px] text-blue-600 font-bold">
+              {summary.totalInstallations > 0
+                ? `${Math.round((summary.pendingCount / summary.totalInstallations) * 100)}%`
+                : '0%'}
+            </span>
+          </div>
+          <div className="text-[10px] text-blue-700 font-medium mt-1">
+            Aguardando instalação
           </div>
         </div>
 
         {/* CONECTADOS */}
         <div className="bg-emerald-50/70 rounded-2xl p-4 border border-emerald-200 shadow-xs flex flex-col justify-between hover:border-emerald-300 transition-all">
           <div className="flex items-center justify-between text-emerald-700 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
               CONECTADOS
             </span>
             <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
@@ -432,7 +458,7 @@ export const ResidentialTrackingView: React.FC = () => {
         {/* DESCONECTADOS */}
         <div className="bg-rose-50/70 rounded-2xl p-4 border border-rose-200 shadow-xs flex flex-col justify-between hover:border-rose-300 transition-all">
           <div className="flex items-center justify-between text-rose-700 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
               DESCONECTADOS
             </span>
@@ -458,7 +484,7 @@ export const ResidentialTrackingView: React.FC = () => {
         {/* SOLAR */}
         <div className="bg-amber-50/70 rounded-2xl p-4 border border-amber-200 shadow-xs flex flex-col justify-between hover:border-amber-300 transition-all">
           <div className="flex items-center justify-between text-amber-700 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
               SOLAR
             </span>
             <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
@@ -481,26 +507,26 @@ export const ResidentialTrackingView: React.FC = () => {
         </div>
 
         {/* M-PLAY */}
-        <div className="bg-blue-50/70 rounded-2xl p-4 border border-blue-200 shadow-xs flex flex-col justify-between hover:border-blue-300 transition-all">
-          <div className="flex items-center justify-between text-blue-700 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+        <div className="bg-sky-50/70 rounded-2xl p-4 border border-sky-200 shadow-xs flex flex-col justify-between hover:border-sky-300 transition-all">
+          <div className="flex items-center justify-between text-sky-700 mb-1">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
               M-PLAY
             </span>
-            <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+            <div className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center text-sky-700">
               <Smartphone className="w-4 h-4" />
             </div>
           </div>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-2xl sm:text-3xl font-black text-blue-700 tracking-tight">
+            <span className="text-2xl sm:text-3xl font-black text-sky-700 tracking-tight">
               {summary.mplayCount}
             </span>
-            <span className="text-[11px] text-blue-600 font-bold">
+            <span className="text-[11px] text-sky-600 font-bold">
               {summary.totalInstallations > 0
                 ? `${Math.round((summary.mplayCount / summary.totalInstallations) * 100)}%`
                 : '0%'}
             </span>
           </div>
-          <div className="text-[10px] text-blue-700 font-medium mt-1">
+          <div className="text-[10px] text-sky-700 font-medium mt-1">
             Combos com M-Play
           </div>
         </div>
@@ -508,8 +534,8 @@ export const ResidentialTrackingView: React.FC = () => {
         {/* 2º PONTO VIRTUA */}
         <div className="bg-purple-50/70 rounded-2xl p-4 border border-purple-200 shadow-xs flex flex-col justify-between hover:border-purple-300 transition-all">
           <div className="flex items-center justify-between text-purple-700 mb-1">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
-              2º PONTO VIRTUA
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+              2º PONTO
             </span>
             <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700">
               <Tv className="w-4 h-4" />
@@ -526,7 +552,7 @@ export const ResidentialTrackingView: React.FC = () => {
             </span>
           </div>
           <div className="text-[10px] text-purple-700 font-medium mt-1">
-            Ponto adicional TV/Fibra
+            Ponto adicional
           </div>
         </div>
       </div>
@@ -653,8 +679,9 @@ export const ResidentialTrackingView: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none text-slate-800 font-semibold text-xs cursor-pointer"
               >
                 <option value="all">Todos os Status</option>
+                <option value="PENDENTE">🔵 PENDENTE DE INSTALAÇÃO</option>
                 <option value="CONECTADO">🟢 CONECTADO</option>
-                <option value="DESCONECTADO">🔴 DESCONECTADO</option>
+                <option value="DESCONECTADO">🔴 DESCONECTADO / QUEBRA</option>
               </select>
             </div>
 
@@ -874,18 +901,30 @@ export const ResidentialTrackingView: React.FC = () => {
                           id={`btn-toggle-status-${sale.id}`}
                           onClick={() => handleToggleStatus(sale)}
                           className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 select-none ${
-                            isConnected
+                            sale.status === 'PENDENTE'
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                              : sale.status === 'CONECTADO'
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
                               : 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-500/20'
                           }`}
-                          title="Clique para alternar entre CONECTADO e DESCONECTADO"
+                          title="Clique para alternar: Pendente → Conectado → Desconectado"
                         >
                           <span
                             className={`w-2 h-2 rounded-full ${
-                              isConnected ? 'bg-white animate-pulse' : 'bg-white'
+                              sale.status === 'PENDENTE'
+                                ? 'bg-white animate-pulse'
+                                : sale.status === 'CONECTADO'
+                                ? 'bg-white'
+                                : 'bg-white'
                             }`}
                           />
-                          <span>{isConnected ? '🟢 CONECTADO' : '🔴 DESCONECTADO'}</span>
+                          <span>
+                            {sale.status === 'PENDENTE'
+                              ? '🔵 PENDENTE'
+                              : sale.status === 'CONECTADO'
+                              ? '🟢 CONECTADO'
+                              : '🔴 DESCONECTADO'}
+                          </span>
                         </button>
                       </td>
 
@@ -927,6 +966,10 @@ export const ResidentialTrackingView: React.FC = () => {
             <span>
               Exibindo <strong>{filteredSales.length}</strong> de{' '}
               <strong>{sales.length}</strong> vendas residenciais
+            </span>
+            <span>•</span>
+            <span className="text-blue-700 font-bold">
+              {summary.pendingCount} Pendentes
             </span>
             <span>•</span>
             <span className="text-emerald-700 font-bold">
@@ -1195,30 +1238,43 @@ export const ResidentialTrackingView: React.FC = () => {
                 <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1.5">
                   Status da Instalação <span className="text-red-600">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormStatus('PENDENTE')}
+                    className={`py-2.5 px-2 sm:px-3 rounded-xl font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                      formStatus === 'PENDENTE'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-300'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-blue-50'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>🔵 PENDENTE</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setFormStatus('CONECTADO')}
-                    className={`py-2.5 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    className={`py-2.5 px-2 sm:px-3 rounded-xl font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                       formStatus === 'CONECTADO'
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-300'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-emerald-50'
                     }`}
                   >
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>🟢 CONECTADO</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setFormStatus('DESCONECTADO')}
-                    className={`py-2.5 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                    className={`py-2.5 px-2 sm:px-3 rounded-xl font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
                       formStatus === 'DESCONECTADO'
                         ? 'bg-rose-600 text-white border-rose-600 shadow-md ring-2 ring-rose-300'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-rose-50'
                     }`}
                   >
-                    <XCircle className="w-4 h-4" />
+                    <XCircle className="w-3.5 h-3.5" />
                     <span>🔴 DESCONECTADO</span>
                   </button>
                 </div>
@@ -1318,7 +1374,9 @@ export const ResidentialTrackingView: React.FC = () => {
                 <strong>Status:</strong>{' '}
                 <span
                   className={
-                    deleteCandidate.status === 'CONECTADO'
+                    deleteCandidate.status === 'PENDENTE'
+                      ? 'text-blue-700 font-bold'
+                      : deleteCandidate.status === 'CONECTADO'
                       ? 'text-emerald-700 font-bold'
                       : 'text-rose-700 font-bold'
                   }

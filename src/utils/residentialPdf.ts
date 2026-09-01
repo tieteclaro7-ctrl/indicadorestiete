@@ -56,9 +56,10 @@ export function exportResidentialTrackingPDF(
   doc.setDrawColor(226, 232, 240); // slate-200
   doc.roundedRect(14, summaryY, pageWidth - 28, 14, 2, 2, 'FD');
 
-  const cardWidth = (pageWidth - 28) / 6;
+  const cardWidth = (pageWidth - 28) / 7;
   const metrics = [
     { label: 'TOTAL INSTALAÇÕES', value: `${summary.totalInstallations}`, color: [15, 23, 42] },
+    { label: 'PENDENTES', value: `${summary.pendingCount}`, color: [37, 99, 235] }, // blue-600
     { label: 'CONECTADOS', value: `${summary.connectedCount}`, color: [22, 163, 74] }, // green-600
     { label: 'DESCONECTADOS', value: `${summary.disconnectedCount}`, color: [220, 38, 38] }, // red-600
     { label: 'SOLAR', value: `${summary.solarCount}`, color: [202, 138, 4] }, // amber-600
@@ -68,12 +69,12 @@ export function exportResidentialTrackingPDF(
 
   metrics.forEach((m, idx) => {
     const xPos = 14 + idx * cardWidth + cardWidth / 2;
-    doc.setFontSize(6.5);
+    doc.setFontSize(6);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139); // slate-500
     doc.text(m.label, xPos, summaryY + 5, { align: 'center' });
 
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(m.color[0], m.color[1], m.color[2]);
     doc.text(m.value, xPos, summaryY + 11, { align: 'center' });
@@ -106,7 +107,11 @@ export function exportResidentialTrackingPDF(
     sale.service || '—',
     sale.secondPointVirtua,
     sale.cpf || '—',
-    sale.status,
+    sale.status === 'PENDENTE'
+      ? 'PENDENTE DE INSTALAÇÃO'
+      : sale.status === 'CONECTADO'
+      ? 'CONECTADO'
+      : 'DESCONECTADO / QUEBRA',
   ]);
 
   autoTable(doc, {
@@ -115,8 +120,8 @@ export function exportResidentialTrackingPDF(
     body: body,
     theme: 'grid',
     styles: {
-      fontSize: 8,
-      cellPadding: 2.2,
+      fontSize: 7.5,
+      cellPadding: 2,
       font: 'helvetica',
       textColor: [30, 41, 59],
       lineColor: [226, 232, 240],
@@ -129,15 +134,15 @@ export function exportResidentialTrackingPDF(
       halign: 'center',
     },
     columnStyles: {
-      0: { halign: 'center', fontStyle: 'bold', cellWidth: 28 }, // Contrato
-      1: { halign: 'center', cellWidth: 26 }, // Data
-      2: { halign: 'center', cellWidth: 30 }, // Período
-      3: { halign: 'center', cellWidth: 20 }, // Solar
-      4: { halign: 'center', cellWidth: 20 }, // M-Play
+      0: { halign: 'center', fontStyle: 'bold', cellWidth: 26 }, // Contrato
+      1: { halign: 'center', cellWidth: 24 }, // Data
+      2: { halign: 'center', cellWidth: 28 }, // Período
+      3: { halign: 'center', cellWidth: 18 }, // Solar
+      4: { halign: 'center', cellWidth: 18 }, // M-Play
       5: { halign: 'left', cellWidth: 'auto' }, // Serviço
-      6: { halign: 'center', cellWidth: 28 }, // 2º Ponto
-      7: { halign: 'center', cellWidth: 32 }, // CPF
-      8: { halign: 'center', fontStyle: 'bold', cellWidth: 30 }, // Status
+      6: { halign: 'center', cellWidth: 26 }, // 2º Ponto
+      7: { halign: 'center', cellWidth: 30 }, // CPF
+      8: { halign: 'center', fontStyle: 'bold', cellWidth: 38 }, // Status
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252],
@@ -151,9 +156,12 @@ export function exportResidentialTrackingPDF(
           if (rawValue === 'CONECTADO') {
             data.cell.styles.textColor = [22, 163, 74]; // Green
             data.cell.styles.fillColor = [240, 253, 244]; // Light green
-          } else if (rawValue === 'DESCONECTADO') {
+          } else if (rawValue === 'DESCONECTADO / QUEBRA') {
             data.cell.styles.textColor = [220, 38, 38]; // Red
             data.cell.styles.fillColor = [254, 242, 242]; // Light red
+          } else if (rawValue === 'PENDENTE DE INSTALAÇÃO') {
+            data.cell.styles.textColor = [37, 99, 235]; // Blue
+            data.cell.styles.fillColor = [239, 246, 255]; // Light blue
           }
         }
         // SIM values
