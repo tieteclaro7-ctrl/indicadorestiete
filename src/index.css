@@ -53,7 +53,9 @@
   }
 
   #printable-report-sheet,
-  #daily-sales-grid-table {
+  #daily-sales-grid-table,
+  #residential-sales-table-card,
+  #residential-summary-cards {
     width: 100% !important;
     max-width: 100% !important;
     box-shadow: none !important;

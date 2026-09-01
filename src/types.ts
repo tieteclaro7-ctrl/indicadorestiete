@@ -59,6 +59,7 @@ export interface StoreDatabase {
 export type ViewTab =
   | 'dashboard'
   | 'daily-entry'
+  | 'residential-tracking'
   | 'seller-view'
   | 'indicator-view'
   | 'monthly-evolution'
@@ -66,6 +67,48 @@ export type ViewTab =
   | 'reports'
   | 'radio-mix'
   | 'settings';
+
+export type ResidentialPeriod = '8:00 às 12:00' | '12:00 às 15:00' | '15:00 às 18:00';
+export type YesNoOption = 'SIM' | 'NÃO';
+export type ResidentialStatus = 'CONECTADO' | 'DESCONECTADO';
+
+export interface ResidentialSale {
+  id: string;
+  contract: string; // Formato de referência: ____/____ (digitação livre)
+  installationDate: string; // YYYY-MM-DD
+  period: ResidentialPeriod; // Exatamente: '8:00 às 12:00' | '12:00 às 15:00' | '15:00 às 18:00'
+  solar: YesNoOption; // 'SIM' | 'NÃO'
+  mplay: YesNoOption; // 'SIM' | 'NÃO'
+  service: string; // Ex: 'Fibra 350 Mega', 'Fibra 500 Mega', 'Fibra 750 Mega', 'Fibra 1 Giga'
+  secondPointVirtua: YesNoOption; // 'SIM' | 'NÃO'
+  cpf: string; // 000.000.000-00
+  status: ResidentialStatus; // 'CONECTADO' | 'DESCONECTADO'
+  sellerName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResidentialFilterState {
+  contract: string;
+  cpf: string;
+  installationDate: string;
+  period: string; // 'all' | ResidentialPeriod
+  solar: string; // 'all' | 'SIM' | 'NÃO'
+  mplay: string; // 'all' | 'SIM' | 'NÃO'
+  secondPointVirtua: string; // 'all' | 'SIM' | 'NÃO'
+  service: string;
+  status: string; // 'all' | 'CONECTADO' | 'DESCONECTADO'
+}
+
+export interface ResidentialSummary {
+  totalInstallations: number;
+  connectedCount: number;
+  disconnectedCount: number;
+  solarCount: number;
+  mplayCount: number;
+  secondPointVirtuaCount: number;
+}
 
 export interface KPIStats {
   totalSales: number;

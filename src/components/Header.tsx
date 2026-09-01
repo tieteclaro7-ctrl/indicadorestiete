@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   ClipboardPen,
+  Home,
   Users,
   Target,
   TrendingUp,
@@ -52,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
   const navItems: { id: ViewTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'daily-entry', label: 'Lançamento Diário', icon: ClipboardPen },
+    { id: 'residential-tracking', label: 'Acompanhamento Residencial', icon: Home },
     { id: 'seller-view', label: 'Por Vendedor', icon: Users },
     { id: 'indicator-view', label: 'Por Indicador', icon: Target },
     { id: 'monthly-evolution', label: 'Evolução Mensal', icon: TrendingUp },

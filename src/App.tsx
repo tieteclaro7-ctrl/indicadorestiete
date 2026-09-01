@@ -8,6 +8,7 @@ import { IndicatorView } from './components/IndicatorView';
 import { MonthlyEvolutionView } from './components/MonthlyEvolutionView';
 import { AiProjectionView } from './components/AiProjectionView';
 import { ReportsView } from './components/ReportsView';
+import { ResidentialTrackingView } from './components/ResidentialTrackingView';
 import { SplashScreen } from './components/SplashScreen';
 import { RadioMixPlayer } from './components/RadioMixPlayer';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
@@ -40,6 +41,7 @@ const AppContent: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-6">
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'daily-entry' && <DailyEntryGrid />}
+        {activeTab === 'residential-tracking' && <ResidentialTrackingView />}
         {activeTab === 'seller-view' && <SellerView />}
         {activeTab === 'indicator-view' && <IndicatorView />}
         {activeTab === 'monthly-evolution' && <MonthlyEvolutionView />}
