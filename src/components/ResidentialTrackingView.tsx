@@ -47,6 +47,11 @@ import {
   PERIOD_OPTIONS,
   COMMON_RESIDENTIAL_SERVICES,
 } from '../utils/residentialStorage';
+import {
+  fetchRemoteResidentialSales,
+  pushRemoteResidentialSales,
+  getLastSyncTime,
+} from '../utils/syncService';
 import { exportResidentialTrackingPDF } from '../utils/residentialPdf';
 import { formatDateBR } from '../utils/calculations';
 import { useSales } from '../context/SalesContext';
@@ -88,16 +93,32 @@ export const ResidentialTrackingView: React.FC = () => {
   const [formSellerName, setFormSellerName] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
 
-  // Load sales from isolated localStorage on mount
+  // Load sales with remote synchronization on mount and visibility change
   useEffect(() => {
-    const loaded = getResidentialSales();
-    setSales(loaded);
+    fetchRemoteResidentialSales().then(({ sales: loadedSales }) => {
+      setSales(loadedSales);
+    });
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRemoteResidentialSales().then(({ sales: refreshed }) => {
+          setSales(refreshed);
+        });
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+    return () => {
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
   }, []);
 
-  // Save changes to localStorage whenever sales array updates
+  // Save changes to localStorage and push to shared remote storage
   const updateSalesList = (newSales: ResidentialSale[]) => {
     setSales(newSales);
-    saveResidentialSales(newSales);
+    pushRemoteResidentialSales(newSales).catch(() => {});
   };
 
   // Filtered sales
@@ -303,13 +324,17 @@ export const ResidentialTrackingView: React.FC = () => {
       {/* Top Banner & Action Header */}
       <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-3xl p-5 sm:p-7 text-white shadow-lg border border-red-500/30 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-black uppercase tracking-wider">
               <Home className="w-3.5 h-3.5" />
               MÓDULO RESIDENCIAL
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/25 text-red-100 text-[11px] font-bold">
               Instalações & Contratos
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/25 text-red-100 text-[11px] font-medium">
+              <Clock className="w-3 h-3" />
+              Última sincronização: {getLastSyncTime()}
             </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2.5">
@@ -322,13 +347,24 @@ export const ResidentialTrackingView: React.FC = () => {
 
         {/* Primary Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Botão + LANÇAR DADOS */}
+          <button
+            type="button"
+            id="btn-lancar-dados-top"
+            onClick={handleOpenNewModal}
+            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black px-4 py-2.5 rounded-xl shadow-md transition-all text-xs sm:text-sm cursor-pointer border border-white"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>+ LANÇAR DADOS</span>
+          </button>
+
           <button
             type="button"
             id="btn-new-residential-sale"
             onClick={handleOpenNewModal}
-            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-extrabold px-4 py-2.5 rounded-xl shadow-md transition-all text-xs sm:text-sm cursor-pointer"
+            className="flex items-center gap-2 bg-red-800/80 hover:bg-red-800 text-white active:scale-95 font-bold px-3.5 py-2.5 rounded-xl shadow-xs transition-all text-xs cursor-pointer border border-white/20"
           >
-            <Plus className="w-4 h-4 stroke-[3]" />
+            <Plus className="w-3.5 h-3.5" />
             <span>NOVA VENDA RESIDENCIAL</span>
           </button>
 
@@ -758,7 +794,7 @@ export const ResidentialTrackingView: React.FC = () => {
       {/* ========================================================================= */}
       <div id="residential-sales-table-card" className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {/* Table Title Bar */}
-        <div className="px-4 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="px-4 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
             <h3 className="font-extrabold text-xs sm:text-sm tracking-wide uppercase">
@@ -766,9 +802,20 @@ export const ResidentialTrackingView: React.FC = () => {
               {filteredSales.length === 1 ? 'registro' : 'registros'})
             </h3>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
-            Clique no botão de status para alternar
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400 font-mono hidden md:inline">
+              Clique no botão de status para alternar
+            </span>
+            <button
+              type="button"
+              id="btn-lancar-dados-table-bar"
+              onClick={handleOpenNewModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>+ LANÇAR DADOS</span>
+            </button>
+          </div>
         </div>
 
         {/* Responsive Table Scroll Container */}
@@ -993,12 +1040,12 @@ export const ResidentialTrackingView: React.FC = () => {
         <div
           id="modal-residential-form-overlay"
           className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={() => setIsFormModalOpen(false)}
         >
           <div
             id="modal-residential-form-card"
             className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-red-600 to-rose-700 px-6 py-4 text-white flex items-center justify-between">

@@ -32,6 +32,7 @@ export interface MonthData {
   monthKey: string; // YYYY-MM
   days: Record<string, DailyEntry>; // YYYY-MM-DD -> DailyEntry
   goals?: Record<string, number>; // indicatorId -> meta de vendas do mês
+  storeGoal?: number; // Meta geral da loja para o mês selecionado (ex: 120)
 }
 
 export interface StoreGoalSummary {
@@ -53,6 +54,7 @@ export interface StoreDatabase {
   sellers: Seller[];
   months: Record<string, MonthData>;
   monthlyGoals?: Record<string, Record<string, number>>; // monthKey -> indicatorId -> goal
+  storeGoals?: Record<string, number>; // monthKey -> Meta da loja (ex: 120)
   lastSelectedDate: string;
 }
 

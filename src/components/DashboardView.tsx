@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   TrendingUp,
   Award,
@@ -11,7 +11,11 @@ import {
   UserCheck,
   CheckCircle,
   BarChart3,
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  Target,
+  Edit3,
+  Clock,
+  Check
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,13 +41,19 @@ import {
   formatDateBR,
   formatMonthLabel
 } from '../utils/calculations';
+import { getLastSyncTime } from '../utils/syncService';
 import { FilterBar } from './FilterBar';
 
 export const DashboardView: React.FC = () => {
-  const { database, filters, setFilters, setActiveTab } = useSales();
+  const { database, filters, setFilters, setActiveTab, updateStoreMonthlyGoal } = useSales();
 
   const currentMonthData = database.months[filters.month];
   const activeSellers = database.sellers.filter((s) => s.active);
+
+  // Store Goal configuration
+  const currentStoreGoal = currentMonthData?.storeGoal ?? database.storeGoals?.[filters.month] ?? 120;
+  const [isEditingStoreGoal, setIsEditingStoreGoal] = useState(false);
+  const [tempGoalInput, setTempGoalInput] = useState(String(currentStoreGoal));
 
   const kpis = React.useMemo(() => {
     return calculateKPIStats(currentMonthData, database.sellers, filters);
@@ -65,14 +75,34 @@ export const DashboardView: React.FC = () => {
     return calculateDailyEvolution(currentMonthData, filters);
   }, [currentMonthData, filters]);
 
+  // Goal metrics calculations
+  const goalPercent = currentStoreGoal > 0 ? (kpis.totalSales / currentStoreGoal) * 100 : 0;
+  const goalGap = currentStoreGoal - kpis.totalSales;
+  const projectedPercent = currentStoreGoal > 0 ? (kpis.projectedMonthEnd / currentStoreGoal) * 100 : 0;
+
+  const handleSaveGoal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseInt(tempGoalInput, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      updateStoreMonthlyGoal(filters.month, parsed);
+    }
+    setIsEditingStoreGoal(false);
+  };
+
   return (
     <div id="dashboard-view-content" className="space-y-6 pb-12">
       {/* Top Welcome & Subtitle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-red-600 to-red-700 rounded-2xl p-5 text-white shadow-sm">
         <div>
-          <span className="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-bold uppercase tracking-wider mb-1.5">
-            DASHBOARD
-          </span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-block px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-bold uppercase tracking-wider">
+              DASHBOARD
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-black/25 text-red-100 text-[11px] font-medium">
+              <Clock className="w-3 h-3" />
+              Última sincronização: {getLastSyncTime()}
+            </span>
+          </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight">
             INDICADORES — {formatMonthLabel(filters.month)}
           </h2>
@@ -97,6 +127,166 @@ export const DashboardView: React.FC = () => {
 
       {/* Filter Bar */}
       <FilterBar />
+
+      {/* ========================================================================= */}
+      {/* CARD DA META DA LOJA (METAS, REALIZADO, % ATINGIMENTO, GAP, PROJEÇÃO)   */}
+      {/* ========================================================================= */}
+      <div id="card-meta-da-loja" className="bg-white rounded-2xl p-5 border border-zinc-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold shrink-0">
+              <Target className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-base sm:text-lg text-zinc-900 uppercase tracking-tight">
+                  META DA LOJA — {formatMonthLabel(filters.month)}
+                </h3>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                  Objetivo Geral
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Acompanhamento integrado de Meta da Loja, Realizado, % de Atingimento, Gap e Projeção do Mês.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Edit Goal */}
+          <div className="flex items-center gap-2">
+            {isEditingStoreGoal ? (
+              <form onSubmit={handleSaveGoal} className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min="1"
+                  value={tempGoalInput}
+                  onChange={(e) => setTempGoalInput(e.target.value)}
+                  className="w-24 px-3 py-1.5 bg-zinc-50 border border-red-500 rounded-lg text-xs font-black text-zinc-900 outline-none"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingStoreGoal(false)}
+                  className="px-2.5 py-1.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                id="btn-edit-store-goal"
+                onClick={() => {
+                  setTempGoalInput(String(currentStoreGoal));
+                  setIsEditingStoreGoal(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold transition-colors cursor-pointer border border-zinc-200/80 shadow-2xs"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-red-600" />
+                <span>Configurar Meta: <strong>{currentStoreGoal}</strong></span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 5 Indicator Pillars of Store Goal */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3">
+          {/* 1. Meta da Loja */}
+          <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+              Meta da Loja
+            </span>
+            <div className="text-2xl font-black text-zinc-900 leading-tight">
+              {currentStoreGoal}
+              <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 block mt-1">
+              Mês selecionado
+            </span>
+          </div>
+
+          {/* 2. Realizado */}
+          <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+              Realizado
+            </span>
+            <div className="text-2xl font-black text-zinc-900 leading-tight">
+              {kpis.totalSales}
+              <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 block mt-1">
+              {kpis.totalSales >= currentStoreGoal ? '🎉 Meta atingida!' : `${kpis.daysWithSales} dias com vendas`}
+            </span>
+          </div>
+
+          {/* 3. % de Atingimento */}
+          <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+              % Atingimento
+            </span>
+            <div
+              className={`text-2xl font-black leading-tight ${
+                goalPercent >= 100
+                  ? 'text-emerald-600'
+                  : goalPercent >= 75
+                  ? 'text-amber-600'
+                  : 'text-red-600'
+              }`}
+            >
+              {goalPercent.toFixed(1)}%
+            </div>
+            <div className="w-full bg-zinc-200 rounded-full h-1.5 mt-2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  goalPercent >= 100
+                    ? 'bg-emerald-500'
+                    : goalPercent >= 75
+                    ? 'bg-amber-500'
+                    : 'bg-red-500'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(0, goalPercent))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 4. Gap para a Meta */}
+          <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+              Gap para a Meta
+            </span>
+            <div className="text-lg font-black text-zinc-900 leading-tight">
+              {goalGap > 0 ? (
+                <span className="text-amber-600">Faltam {goalGap}</span>
+              ) : (
+                <span className="text-emerald-600">+{Math.abs(goalGap)} batida</span>
+              )}
+            </div>
+            <span className="text-[10px] text-zinc-500 block mt-1">
+              {goalGap > 0 ? `${(goalGap / Math.max(1, (kpis.totalDaysInMonth - kpis.daysWithSales))).toFixed(1)}/dia restante` : 'Superou a meta!'}
+            </span>
+          </div>
+
+          {/* 5. Projeção do Mês */}
+          <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80 col-span-2 sm:col-span-1">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+              Projeção do Mês
+            </span>
+            <div className="text-2xl font-black text-zinc-900 leading-tight">
+              {kpis.projectedMonthEnd}
+              <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+            </div>
+            <span className="text-[10px] font-bold text-zinc-600 block mt-1">
+              {projectedPercent.toFixed(1)}% da meta
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* 6 Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">

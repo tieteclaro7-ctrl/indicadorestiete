@@ -23,6 +23,7 @@ interface SalesContextType {
   removeSeller: (sellerId: string) => void;
   toggleSellerActive: (sellerId: string) => void;
   // Store goals management
+  updateStoreMonthlyGoal: (monthKey: string, goal: number) => void;
   updateStoreGoal: (monthKey: string, indicatorId: string, value: number) => void;
   updateAllStoreGoals: (monthKey: string, goals: Record<string, number>) => void;
   clearStoreGoals: (monthKey: string) => void;
@@ -84,14 +85,35 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     indicatorId: 'all',
   });
 
-  // Keep localStorage updated whenever database changes
+  // Keep localStorage updated whenever database changes and push to shared remote storage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
+      // Background push to shared storage so other devices see latest
+      import('../utils/syncService').then(({ pushRemoteStoreDatabase }) => {
+        pushRemoteStoreDatabase(database).catch(() => {});
+      });
     } catch (e) {
       console.error('Falha ao persistir no localStorage:', e);
     }
   }, [database]);
+
+  // Initial remote fetch on startup to sync latest across devices
+  useEffect(() => {
+    import('../utils/syncService').then(({ fetchRemoteStoreDatabase }) => {
+      fetchRemoteStoreDatabase().then((remoteDb) => {
+        if (remoteDb && remoteDb.months && Object.keys(remoteDb.months).length > 0) {
+          setDatabase((prev) => {
+            // Keep local sellers if active or merge
+            return {
+              ...remoteDb,
+              sellers: remoteDb.sellers && remoteDb.sellers.length > 0 ? sortSellersAlphabetically(remoteDb.sellers) : prev.sellers,
+            };
+          });
+        }
+      }).catch(() => {});
+    });
+  }, []);
 
   // Keep filter month in sync when selected date changes
   useEffect(() => {
@@ -312,6 +334,28 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
+  const updateStoreMonthlyGoal = (monthKey: string, goal: number) => {
+    const safeGoal = Math.max(0, isNaN(goal) ? 0 : goal);
+    setDatabase((prev) => {
+      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+      return {
+        ...prev,
+        months: {
+          ...prev.months,
+          [monthKey]: {
+            ...existingMonth,
+            storeGoal: safeGoal,
+          },
+        },
+        storeGoals: {
+          ...(prev.storeGoals || {}),
+          [monthKey]: safeGoal,
+        },
+      };
+    });
+    showToast(`Meta da Loja para ${monthKey.split('-').reverse().join('/')} configurada: ${safeGoal} vendas!`, 'success');
+  };
+
   const updateStoreGoal = (monthKey: string, indicatorId: string, value: number) => {
     const safeVal = Math.max(0, isNaN(value) ? 0 : value);
     setDatabase((prev) => {
@@ -490,6 +534,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addSeller,
         removeSeller,
         toggleSellerActive,
+        updateStoreMonthlyGoal,
         updateStoreGoal,
         updateAllStoreGoals,
         clearStoreGoals,

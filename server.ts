@@ -32,6 +32,51 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", app: "Dashboard de Vendas Tietê Plaza" });
 });
 
+// Shared in-memory data store for cross-device synchronization
+let sharedResidentialSales: any[] = [];
+let sharedStoreDb: any = null;
+let lastSyncTimestamp: string = new Date().toISOString();
+
+// Residential Sales sync endpoints
+app.get(["/api/residential-sales", "/.netlify/functions/residential"], (_req, res) => {
+  res.json({
+    success: true,
+    sales: sharedResidentialSales,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
+app.post(["/api/residential-sales", "/.netlify/functions/residential"], (req, res) => {
+  const payload = req.body;
+  const sales = Array.isArray(payload) ? payload : payload.sales || [];
+  sharedResidentialSales = sales;
+  lastSyncTimestamp = new Date().toISOString();
+  res.json({
+    success: true,
+    count: sales.length,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
+// Store Database sync endpoints
+app.get(["/api/store-db", "/.netlify/functions/database"], (_req, res) => {
+  res.json({
+    success: true,
+    data: sharedStoreDb,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
+app.post(["/api/store-db", "/.netlify/functions/database"], (req, res) => {
+  const payload = req.body;
+  sharedStoreDb = payload.database || payload;
+  lastSyncTimestamp = new Date().toISOString();
+  res.json({
+    success: true,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
 // Dedicated routes for audio assets to ensure clean streaming with Range headers for mobile & desktop
 app.get(["/ambient_techno.wav", "/futuristic_anthem.wav", "/05.mp3", "/electronic_anthem.wav"], (_req, res) => {
   const filePath = path.join(process.cwd(), "public", "ambient_techno.wav");
