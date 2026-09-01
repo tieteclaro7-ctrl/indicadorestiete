@@ -347,24 +347,13 @@ export const ResidentialTrackingView: React.FC = () => {
 
         {/* Primary Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Botão + LANÇAR DADOS */}
-          <button
-            type="button"
-            id="btn-lancar-dados-top"
-            onClick={handleOpenNewModal}
-            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black px-4 py-2.5 rounded-xl shadow-md transition-all text-xs sm:text-sm cursor-pointer border border-white"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>+ LANÇAR DADOS</span>
-          </button>
-
           <button
             type="button"
             id="btn-new-residential-sale"
             onClick={handleOpenNewModal}
-            className="flex items-center gap-2 bg-red-800/80 hover:bg-red-800 text-white active:scale-95 font-bold px-3.5 py-2.5 rounded-xl shadow-xs transition-all text-xs cursor-pointer border border-white/20"
+            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-extrabold px-4 py-2.5 rounded-xl shadow-md transition-all text-xs sm:text-sm cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>NOVA VENDA RESIDENCIAL</span>
           </button>
 
@@ -388,28 +377,6 @@ export const ResidentialTrackingView: React.FC = () => {
           >
             <FileDown className="w-4 h-4" />
             <span className="hidden sm:inline">GERAR PDF</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-export-backup-residential"
-            onClick={handleExportBackup}
-            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/40 text-white font-bold px-3 py-2.5 rounded-xl transition-all text-xs cursor-pointer border border-white/15"
-            title="Fazer backup dos registros"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden md:inline">EXPORTAR DADOS</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-import-backup-residential"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/40 text-white font-bold px-3 py-2.5 rounded-xl transition-all text-xs cursor-pointer border border-white/15"
-            title="Restaurar backup de registros"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden md:inline">IMPORTAR DADOS</span>
           </button>
         </div>
       </div>

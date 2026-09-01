@@ -12,12 +12,15 @@ import {
   Save,
   RotateCcw,
   SlidersHorizontal,
-  Check
+  Check,
+  Award,
+  Layers,
+  Calendar
 } from 'lucide-react';
 import { useSales } from '../context/SalesContext';
 import { CATEGORIES, ALL_INDICATORS, CATEGORY_MAP, INDICATOR_MAP } from '../data/categories';
 import { DailyEntry } from '../types';
-import { formatMonthLabel } from '../utils/calculations';
+import { formatMonthLabel, getDaysInMonth } from '../utils/calculations';
 
 export const StoreGoalsPanel: React.FC = () => {
   const { database, filters, updateStoreGoal, updateAllStoreGoals, clearStoreGoals, showToast } = useSales();
@@ -27,7 +30,7 @@ export const StoreGoalsPanel: React.FC = () => {
   const activeSellers = useMemo(() => database.sellers.filter((s) => s.active), [database.sellers]);
   const activeSellerIds = useMemo(() => new Set(activeSellers.map((s) => s.id)), [activeSellers]);
 
-  // Is panel expanded for full indicator editing or collapsed to summary
+  // Is panel expanded for full indicator editing
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -69,6 +72,27 @@ export const StoreGoalsPanel: React.FC = () => {
     return totals;
   }, [currentMonthData, activeSellerIds]);
 
+  // Days calculations for projections and daily gap rate
+  const daysInfo = useMemo(() => {
+    const totalDaysInMonth = getDaysInMonth(currentMonthKey);
+    const daysWithSales = currentMonthData?.days
+      ? Object.values(currentMonthData.days).filter((e: DailyEntry) => {
+          let daySum = 0;
+          Object.values(e.values || {}).forEach((sMap) => {
+            Object.values(sMap || {}).forEach((q) => (daySum += Number(q) || 0));
+          });
+          return daySum > 0;
+        }).length
+      : 0;
+
+    const remainingDays = Math.max(1, totalDaysInMonth - daysWithSales);
+    return {
+      totalDaysInMonth,
+      daysWithSales,
+      remainingDays,
+    };
+  }, [currentMonthData, currentMonthKey]);
+
   // Global summary statistics
   const summary = useMemo(() => {
     let totalGoal = 0;
@@ -91,7 +115,10 @@ export const StoreGoalsPanel: React.FC = () => {
     });
 
     const percentAchieved = totalGoal > 0 ? (totalRealized / totalGoal) * 100 : 0;
-    const remainingToGoal = Math.max(0, totalGoal - totalRealized);
+    const remainingToGoal = totalGoal - totalRealized;
+    const dailyAverage = daysInfo.daysWithSales > 0 ? totalRealized / daysInfo.daysWithSales : 0;
+    const projectedMonthEnd = Math.round(dailyAverage * daysInfo.totalDaysInMonth);
+    const projectedPercent = totalGoal > 0 ? (projectedMonthEnd / totalGoal) * 100 : 0;
 
     return {
       totalGoal,
@@ -100,8 +127,11 @@ export const StoreGoalsPanel: React.FC = () => {
       remainingToGoal,
       indicatorsWithGoal,
       indicatorsAchieved,
+      dailyAverage,
+      projectedMonthEnd,
+      projectedPercent,
     };
-  }, [localGoals, realizedByIndicator]);
+  }, [localGoals, realizedByIndicator, daysInfo]);
 
   // Category-specific summaries
   const categorySummaries = useMemo(() => {
@@ -185,181 +215,267 @@ export const StoreGoalsPanel: React.FC = () => {
     updateAllStoreGoals(currentMonthKey, localGoals);
     setTimeout(() => {
       setIsSavingAll(false);
-    }, 600);
+      showToast('Metas por indicadores salvas com sucesso!', 'success');
+    }, 500);
   };
 
   const handleClearGoals = () => {
-    if (window.confirm(`Deseja realmente zerar todas as metas da loja para ${formatMonthLabel(currentMonthKey)}?`)) {
+    if (window.confirm(`Deseja realmente zerar as metas detalhadas para ${formatMonthLabel(currentMonthKey)}?`)) {
       setLocalGoals({});
       clearStoreGoals(currentMonthKey);
+      showToast('Metas zeradas com sucesso.', 'info');
     }
   };
 
   return (
     <div
-      id="meta-geral-loja-panel"
-      className="bg-white rounded-2xl border border-zinc-200/90 shadow-sm overflow-hidden transition-all duration-300"
+      id="meta-detalhada-indicadores-panel"
+      className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden transition-all duration-300 space-y-4 p-5"
     >
-      {/* Header Banner da Meta Geral */}
-      <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 text-white p-4 sm:p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Title & Context */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/30 text-red-400 flex items-center justify-center shrink-0">
-              <Target className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-md bg-red-600 text-white text-[10px] font-black uppercase tracking-wider">
-                  PLANEJAMENTO
-                </span>
-                <span className="text-xs text-zinc-400 font-medium">
-                  {formatMonthLabel(currentMonthKey)}
-                </span>
-              </div>
-              <h3 className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-2">
-                META GERAL DA LOJA
-              </h3>
-            </div>
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center font-bold shrink-0">
+            <Target className="w-5 h-5" />
           </div>
-
-          {/* Quick Metrics Badges in Header */}
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-            {/* Meta Total */}
-            <div className="px-3 py-1.5 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center gap-2">
-              <span className="text-[11px] text-zinc-400 font-semibold uppercase">Meta Loja:</span>
-              <span className="text-sm font-black text-white">
-                {summary.totalGoal > 0 ? summary.totalGoal : 'Não definida'}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-black text-base sm:text-lg text-zinc-900 uppercase tracking-tight">
+                METAS POR INDICADORES DETALHADOS — {formatMonthLabel(currentMonthKey)}
+              </h3>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                {summary.indicatorsWithGoal > 0 ? `${summary.indicatorsWithGoal} com meta definida` : 'Planejamento'}
               </span>
             </div>
-
-            {/* Realizado Total */}
-            <div className="px-3 py-1.5 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center gap-2">
-              <span className="text-[11px] text-zinc-400 font-semibold uppercase">Realizado:</span>
-              <span className="text-sm font-black text-emerald-400">
-                {summary.totalRealized} vendas
-              </span>
-            </div>
-
-            {/* % Atingimento */}
-            <div className="px-3 py-1.5 rounded-xl bg-zinc-800/80 border border-zinc-700/60 flex items-center gap-2">
-              <span className="text-[11px] text-zinc-400 font-semibold uppercase">Atingimento:</span>
-              <span
-                className={`text-sm font-black ${
-                  summary.totalGoal === 0
-                    ? 'text-zinc-400'
-                    : summary.percentAchieved >= 100
-                    ? 'text-emerald-400'
-                    : summary.percentAchieved >= 70
-                    ? 'text-amber-400'
-                    : 'text-red-400'
-                }`}
-              >
-                {summary.totalGoal > 0 ? `${summary.percentAchieved.toFixed(1)}%` : '—'}
-              </span>
-            </div>
-
-            {/* Toggle Button */}
-            <button
-              id="btn-toggle-meta-fields"
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="px-3.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer ml-auto sm:ml-0"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>{isExpanded ? 'Recolher Metas' : 'Preencher / Ajustar Metas'}</span>
-              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+            <p className="text-xs text-zinc-500">
+              Defina e acompanhe a meta individual de cada produto/serviço (GROSS, M-PLAY, RESIDENCIAIS, SERVIÇOS e PORTABILIDADES).
+            </p>
           </div>
         </div>
 
-        {/* Global Progress Bar in Header */}
-        {summary.totalGoal > 0 && (
-          <div className="mt-4 pt-3 border-t border-zinc-700/60">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-300 font-medium">Cenário Geral da Meta da Loja:</span>
-                <span
-                  className={`font-bold px-2 py-0.5 rounded text-[10px] uppercase ${
-                    summary.percentAchieved >= 100
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                      : summary.percentAchieved >= 80
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                      : summary.percentAchieved >= 50
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                  }`}
-                >
-                  {summary.percentAchieved >= 100
-                    ? `🎯 Meta Batida (+${summary.totalRealized - summary.totalGoal})`
-                    : `⚡ Faltam ${summary.remainingToGoal} vendas`}
-                </span>
-              </div>
-              <span className="text-zinc-400 font-bold text-[11px]">
-                {summary.indicatorsAchieved} de {summary.indicatorsWithGoal} indicadores batidos
+        {/* Quick Action Toggle & Save */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold transition-colors cursor-pointer border border-zinc-200"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-red-600" />
+            <span>{isExpanded ? 'Recolher Indicadores' : 'Expandir Indicadores (36)'}</span>
+            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 5 MACRO INDICATOR PILLARS (META TOTAL, REALIZADO, % ATINGIMENTO, GAP, PROJEÇÃO) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        {/* 1. Meta da Loja (Soma dos Indicadores) */}
+        <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+            Meta Total da Loja
+          </span>
+          <div className="text-2xl font-black text-zinc-900 leading-tight">
+            {summary.totalGoal}
+            <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+          </div>
+          <span className="text-[10px] text-zinc-500 block mt-1">
+            Soma dos {summary.indicatorsWithGoal} indicadores
+          </span>
+        </div>
+
+        {/* 2. Realizado */}
+        <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+            Realizado Geral
+          </span>
+          <div className="text-2xl font-black text-zinc-900 leading-tight">
+            {summary.totalRealized}
+            <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+          </div>
+          <span className="text-[10px] text-zinc-500 block mt-1">
+            {summary.totalGoal > 0 && summary.totalRealized >= summary.totalGoal
+              ? '🎉 Meta da Loja atingida!'
+              : `${daysInfo.daysWithSales} dias com vendas`}
+          </span>
+        </div>
+
+        {/* 3. % de Atingimento */}
+        <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+            % Atingimento Geral
+          </span>
+          <div
+            className={`text-2xl font-black leading-tight ${
+              summary.totalGoal === 0
+                ? 'text-zinc-500'
+                : summary.percentAchieved >= 100
+                ? 'text-emerald-600'
+                : summary.percentAchieved >= 75
+                ? 'text-amber-600'
+                : 'text-red-600'
+            }`}
+          >
+            {summary.totalGoal > 0 ? `${summary.percentAchieved.toFixed(1)}%` : '—'}
+          </div>
+          <div className="w-full bg-zinc-200 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                summary.percentAchieved >= 100
+                  ? 'bg-emerald-500'
+                  : summary.percentAchieved >= 75
+                  ? 'bg-amber-500'
+                  : 'bg-red-500'
+              }`}
+              style={{ width: `${Math.min(100, Math.max(0, summary.percentAchieved))}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 4. Gap para a Meta */}
+        <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+            Gap Geral
+          </span>
+          <div className="text-lg font-black text-zinc-900 leading-tight">
+            {summary.totalGoal === 0 ? (
+              <span className="text-zinc-400 text-sm font-semibold">Defina as metas</span>
+            ) : summary.remainingToGoal > 0 ? (
+              <span className="text-amber-600">Faltam {summary.remainingToGoal}</span>
+            ) : (
+              <span className="text-emerald-600">+{Math.abs(summary.remainingToGoal)} batida</span>
+            )}
+          </div>
+          <span className="text-[10px] text-zinc-500 block mt-1">
+            {summary.totalGoal > 0 && summary.remainingToGoal > 0
+              ? `${(summary.remainingToGoal / daysInfo.remainingDays).toFixed(1)}/dia restante`
+              : summary.totalGoal > 0
+              ? 'Superou a meta!'
+              : 'Preencha abaixo'}
+          </span>
+        </div>
+
+        {/* 5. Projeção do Mês */}
+        <div className="bg-zinc-50 rounded-xl p-3.5 border border-zinc-200/80 col-span-2 sm:col-span-1">
+          <span className="text-[11px] font-bold text-zinc-500 uppercase block mb-1">
+            Projeção do Mês
+          </span>
+          <div className="text-2xl font-black text-zinc-900 leading-tight">
+            {summary.projectedMonthEnd}
+            <span className="text-xs font-semibold text-zinc-500 ml-1">vendas</span>
+          </div>
+          <span className="text-[10px] font-bold text-zinc-600 block mt-1">
+            {summary.totalGoal > 0 ? `${summary.projectedPercent.toFixed(1)}% da meta` : 'Estimativa'}
+          </span>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* CATEGORY BREAKDOWN SUMMARY BAR                                           */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-1">
+        {categorySummaries.map((cat) => (
+          <div
+            key={cat.id}
+            onClick={() => {
+              setSelectedCategoryTab(cat.id === selectedCategoryTab ? 'all' : cat.id);
+              if (!isExpanded) setIsExpanded(true);
+            }}
+            className={`p-3 rounded-xl border transition-all cursor-pointer ${
+              selectedCategoryTab === cat.id
+                ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
+                : 'bg-zinc-50/90 hover:bg-zinc-100 border-zinc-200/80 text-zinc-800'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span
+                className={`text-[11px] font-black uppercase tracking-tight truncate ${
+                  selectedCategoryTab === cat.id ? 'text-white' : 'text-zinc-800'
+                }`}
+              >
+                {cat.name}
+              </span>
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: cat.color }}
+              />
+            </div>
+            <div className="flex items-baseline justify-between gap-2 mt-1.5">
+              <span className="text-xs font-medium opacity-80">
+                Meta: <strong>{cat.goal}</strong>
+              </span>
+              <span
+                className={`text-xs font-black ${
+                  selectedCategoryTab === cat.id
+                    ? 'text-emerald-300'
+                    : cat.percent >= 100
+                    ? 'text-emerald-600'
+                    : 'text-zinc-900'
+                }`}
+              >
+                {cat.realized} un
               </span>
             </div>
-            <div className="w-full bg-zinc-700 h-2.5 rounded-full overflow-hidden">
+            <div className="w-full bg-zinc-200/50 rounded-full h-1 mt-1.5 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  summary.percentAchieved >= 100
-                    ? 'bg-emerald-500'
-                    : summary.percentAchieved >= 80
-                    ? 'bg-blue-500'
-                    : summary.percentAchieved >= 50
-                    ? 'bg-amber-500'
-                    : 'bg-red-500'
-                }`}
-                style={{ width: `${Math.min(100, Math.max(3, summary.percentAchieved))}%` }}
+                className="h-full rounded-full transition-all"
+                style={{
+                  backgroundColor: cat.color,
+                  width: `${Math.min(100, Math.max(0, cat.percent))}%`,
+                }}
               />
             </div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Expanded Content: Indicator Input Fields and Progress */}
+      {/* ========================================================================= */}
+      {/* DETAILED INDICATORS GRID                                                  */}
+      {/* ========================================================================= */}
       {isExpanded && (
-        <div className="p-4 sm:p-5 space-y-5 bg-zinc-50/50">
-          {/* Controls Bar: Category Tabs & Search */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-zinc-200">
+        <div className="space-y-4 pt-2">
+          {/* Controls Bar: Category Filter Tabs, Search & Bulk Actions */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
             {/* Category Filter Tabs */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
               <button
+                type="button"
                 onClick={() => setSelectedCategoryTab('all')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   selectedCategoryTab === 'all'
                     ? 'bg-zinc-900 text-white shadow-xs'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    : 'bg-white text-zinc-600 hover:bg-zinc-200/70 border border-zinc-200'
                 }`}
               >
-                Todos os Indicadores (36)
+                Todos (36)
               </button>
               {categorySummaries.map((cat) => (
                 <button
+                  type="button"
                   key={cat.id}
                   onClick={() => setSelectedCategoryTab(cat.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
                     selectedCategoryTab === cat.id
                       ? 'bg-red-600 text-white shadow-xs'
-                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      : 'bg-white text-zinc-600 hover:bg-zinc-200/70 border border-zinc-200'
                   }`}
                 >
                   <span>{cat.name}</span>
-                  {cat.goal > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                        selectedCategoryTab === cat.id
-                          ? 'bg-white/20 text-white'
-                          : 'bg-zinc-200 text-zinc-700'
-                      }`}
-                    >
-                      {cat.realized}/{cat.goal}
-                    </span>
-                  )}
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      selectedCategoryTab === cat.id
+                        ? 'bg-white/20 text-white'
+                        : 'bg-zinc-100 text-zinc-700'
+                    }`}
+                  >
+                    {cat.realized}/{cat.goal}
+                  </span>
                 </button>
               ))}
             </div>
 
-            {/* Search & Action Buttons */}
+            {/* Search and Save All */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1 sm:w-48">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -368,15 +484,16 @@ export const StoreGoalsPanel: React.FC = () => {
                   placeholder="Buscar indicador..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 focus:bg-white"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 focus:bg-white"
                 />
               </div>
 
               <button
+                type="button"
                 onClick={handleSaveAll}
                 disabled={isSavingAll}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 active:scale-95"
-                title="Salvar todas as metas do mês"
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                title="Salvar todas as metas"
               >
                 {isSavingAll ? <Check className="w-3.5 h-3.5 animate-bounce" /> : <Save className="w-3.5 h-3.5" />}
                 <span>{isSavingAll ? 'Salvo!' : 'Salvar Metas'}</span>
@@ -384,18 +501,19 @@ export const StoreGoalsPanel: React.FC = () => {
 
               {summary.totalGoal > 0 && (
                 <button
+                  type="button"
                   onClick={handleClearGoals}
-                  className="p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer shrink-0"
+                  className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-200 rounded-lg transition-colors cursor-pointer shrink-0"
                   title="Zerar metas do mês"
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Grid of Categories and Indicator Meta Fields */}
-          <div className="space-y-5">
+          {/* Detailed Categories and Indicators List */}
+          <div className="space-y-4">
             {filteredCategories.map((category) => {
               const catSummary = categorySummaries.find((c) => c.id === category.id);
               const catPercent = catSummary?.percent || 0;
@@ -405,8 +523,8 @@ export const StoreGoalsPanel: React.FC = () => {
                   key={category.id}
                   className="bg-white rounded-xl border border-zinc-200 overflow-hidden shadow-2xs"
                 >
-                  {/* Category Header Strip */}
-                  <div className="px-4 py-2.5 bg-zinc-100/80 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
+                  {/* Category Header Bar */}
+                  <div className="px-4 py-2.5 bg-zinc-50 border-b border-zinc-200 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span
                         className="w-3 h-3 rounded-full shrink-0"
@@ -420,7 +538,7 @@ export const StoreGoalsPanel: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Category Metrics Summary */}
+                    {/* Category Totals */}
                     <div className="flex items-center gap-3 text-xs">
                       <div className="flex items-center gap-1.5">
                         <span className="text-zinc-500 font-medium text-[11px]">Meta Categoria:</span>
@@ -450,7 +568,7 @@ export const StoreGoalsPanel: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Indicator Meta Field Cards Grid */}
+                  {/* Indicator Cards Grid */}
                   <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {category.indicators.map((indicator) => {
                       const goalValue = localGoals[indicator.id] ?? '';
@@ -474,7 +592,7 @@ export const StoreGoalsPanel: React.FC = () => {
                               : 'bg-zinc-50/60 border-zinc-200/80'
                           }`}
                         >
-                          {/* Indicator Header */}
+                          {/* Indicator Name Header */}
                           <div>
                             <div className="flex items-start justify-between gap-1 mb-1">
                               <span
@@ -501,7 +619,7 @@ export const StoreGoalsPanel: React.FC = () => {
                             {/* Input Field for Store Goal */}
                             <div className="flex items-center justify-between gap-2">
                               <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight">
-                                Meta Loja:
+                                Meta:
                               </label>
                               <div className="relative w-20">
                                 <input
@@ -583,8 +701,8 @@ export const StoreGoalsPanel: React.FC = () => {
             })}
           </div>
 
-          {/* Footer note explaining dynamic sum behavior */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-500">
+          {/* Footer note */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-500">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
               <span>
@@ -600,3 +718,4 @@ export const StoreGoalsPanel: React.FC = () => {
     </div>
   );
 };
+
