@@ -19,7 +19,7 @@ const AppContent: React.FC = () => {
   const [isRadioOpen, setIsRadioOpen] = useState<boolean>(false);
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-slate-50 text-slate-900 selection:bg-red-500 selection:text-white">
+    <div className="min-h-screen w-full max-w-full flex-1 flex flex-col bg-slate-50 text-slate-900 selection:bg-red-500 selection:text-white">
       {/* Splash Opening Screen */}
       {!hasEntered && (
         <SplashScreen onEnter={() => setHasEntered(true)} />

@@ -438,7 +438,7 @@ export const StoreGoalsPanel: React.FC = () => {
           {/* Controls Bar: Category Filter Tabs, Search & Bulk Actions */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
             {/* Category Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+            <div className="flex flex-wrap items-center gap-1.5 pb-1 md:pb-0">
               <button
                 type="button"
                 onClick={() => setSelectedCategoryTab('all')}

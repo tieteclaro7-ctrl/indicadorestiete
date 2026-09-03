@@ -262,7 +262,7 @@ export const ReportsView: React.FC = () => {
               <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-red-700">
                 <Layers className="w-3.5 h-3.5" /> Detalhamento por Indicador e Vendedor
               </h3>
-              <div className="overflow-x-auto w-full max-w-full touch-pan-x border border-zinc-200 rounded-xl">
+              <div className="overflow-x-auto w-full max-w-full overscroll-x-contain border border-zinc-200 rounded-xl">
                 <table className="w-full text-left text-xs border-collapse min-w-[500px]">
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-700 font-extrabold text-[10px] uppercase border-b border-zinc-200">
@@ -390,7 +390,7 @@ export const ReportsView: React.FC = () => {
               <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-red-700">
                 <Award className="w-3.5 h-3.5" /> 1. Ranking e Resultado por Vendedor (Acumulado)
               </h3>
-              <div className="overflow-x-auto w-full max-w-full touch-pan-x border border-zinc-200 rounded-xl">
+              <div className="overflow-x-auto w-full max-w-full overscroll-x-contain border border-zinc-200 rounded-xl">
                 <table className="w-full text-left text-xs border-collapse min-w-[600px]">
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-700 font-extrabold text-[10px] uppercase border-b border-zinc-200">
@@ -429,7 +429,7 @@ export const ReportsView: React.FC = () => {
               <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-red-700">
                 <Layers className="w-3.5 h-3.5" /> 2. Principais Indicadores do Mês
               </h3>
-              <div className="overflow-x-auto w-full max-w-full touch-pan-x border border-zinc-200 rounded-xl">
+              <div className="overflow-x-auto w-full max-w-full overscroll-x-contain border border-zinc-200 rounded-xl">
                 <table className="w-full text-left text-xs border-collapse min-w-[550px]">
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-700 font-extrabold text-[10px] uppercase border-b border-zinc-200">

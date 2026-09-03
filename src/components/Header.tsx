@@ -43,7 +43,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
     manualSync,
   } = useSales();
   const [radioState, setRadioState] = useState<RadioState>(globalAudioEngine.getState());
-  const activeTabRef = React.useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const unsub = globalAudioEngine.subscribe((state) => {
@@ -51,16 +50,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (activeTabRef.current) {
-      activeTabRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-    }
-  }, [activeTab]);
 
   const handleTogglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -80,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
     { id: 'indicator-view', label: 'Por Indicador', icon: Target },
     { id: 'monthly-evolution', label: 'Evolução Mensal', icon: TrendingUp },
     { id: 'ai-projection', label: 'Análise IA', icon: BrainCircuit },
-    { id: 'reports', label: 'Relatórios & PDF', icon: FileText },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
     { id: 'radio-mix', label: 'Rádio Mix FM', icon: Radio },
   ];
 
@@ -255,10 +244,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
       </div>
 
       {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 w-full">
         <nav
           id="header-nav-tabs"
-          className="flex space-x-1.5 overflow-x-auto py-2 scroll-smooth no-scrollbar touch-pan-x w-full max-w-full"
+          className="flex flex-wrap xl:flex-nowrap items-stretch gap-1 sm:gap-1.5 xl:space-x-1.5 xl:gap-0 py-2 w-full"
           aria-label="Tabs"
         >
           {navItems.map((item) => {
@@ -267,16 +256,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
             return (
               <button
                 key={item.id}
-                ref={isActive ? activeTabRef : undefined}
                 id={`nav-tab-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${
+                className={`flex-1 sm:flex-initial min-w-fit flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
                   isActive
                     ? 'bg-red-50 text-red-700 border border-red-200 shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                    : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-transparent'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? 'text-red-600' : 'text-zinc-500'}`} />
+                <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${isActive ? 'text-red-600' : 'text-zinc-500'}`} />
                 <span>{item.label}</span>
               </button>
             );

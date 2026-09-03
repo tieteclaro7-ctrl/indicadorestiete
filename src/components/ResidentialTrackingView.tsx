@@ -1009,7 +1009,7 @@ export const ResidentialTrackingView: React.FC = () => {
         </div>
 
         {/* Responsive Table Scroll Container */}
-        <div className="w-full max-w-full overflow-x-auto touch-pan-x">
+        <div className="w-full max-w-full overflow-x-auto overscroll-x-contain">
           <table id="residential-sales-table" className="w-full text-left border-collapse text-xs min-w-[760px]">
             <thead>
               <tr className="bg-slate-100/90 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">

@@ -177,7 +177,7 @@ export const MonthlyEvolutionView: React.FC = () => {
           </span>
         </div>
 
-        <div className="overflow-x-auto w-full max-w-full touch-pan-x">
+        <div className="overflow-x-auto w-full max-w-full overscroll-x-contain">
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-zinc-100 text-zinc-700 text-[11px] uppercase tracking-wider font-extrabold border-b border-zinc-300">

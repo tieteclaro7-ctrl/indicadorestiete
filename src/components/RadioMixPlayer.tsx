@@ -92,7 +92,7 @@ export const RadioMixPlayer: React.FC<RadioMixPlayerProps> = ({
   return (
     <div
       id="radio-mix-modal-overlay"
-      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm transition-all duration-200 ${
+      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm transition-all duration-200 overflow-y-auto ${
         isOpen
           ? 'opacity-100 pointer-events-auto visible'
           : 'opacity-0 pointer-events-none invisible'

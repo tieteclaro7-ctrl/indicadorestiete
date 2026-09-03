@@ -284,7 +284,7 @@ export const DailyEntryGrid: React.FC = () => {
       </div>
 
       {/* Spreadsheet Table Container */}
-      <div className="bg-white rounded-b-2xl border border-t-0 border-zinc-200 shadow-sm overflow-x-auto w-full max-w-full touch-pan-x">
+      <div className="bg-white rounded-b-2xl border border-t-0 border-zinc-200 shadow-sm overflow-x-auto w-full max-w-full overscroll-x-contain">
         <table id="daily-sales-grid-table" className="w-full text-left border-collapse min-w-[900px]">
           {/* Table Header: Column Sellers */}
           <thead>
