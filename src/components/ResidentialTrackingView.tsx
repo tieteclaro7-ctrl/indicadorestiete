@@ -504,9 +504,9 @@ export const ResidentialTrackingView: React.FC = () => {
       />
 
       {/* Top Banner & Action Header */}
-      <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-red-500/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-2xl p-4 sm:p-6 text-white shadow-md border border-red-500/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Left info column */}
-        <div className="space-y-2 min-w-0">
+        <div className="space-y-2 min-w-0 max-w-full">
           <div className="flex items-center gap-2 flex-wrap text-xs">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/20 text-white font-black uppercase tracking-wider text-[11px]">
               <Home className="w-3.5 h-3.5" />
@@ -519,7 +519,7 @@ export const ResidentialTrackingView: React.FC = () => {
             {/* Visual Sync Status Indicator (🟢 SINCRONIZADO / 🟠 SINCRONIZANDO... / 🔴 SEM CONEXÃO) */}
             <div
               id="sync-status-indicator"
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-black/30 text-white font-medium text-[11px] border border-white/10 backdrop-blur-xs"
+              className="inline-flex items-center gap-2 px-2.5 sm:px-3 py-1 rounded-lg bg-black/30 text-white font-medium text-[11px] border border-white/10 backdrop-blur-xs flex-wrap max-w-full"
             >
               {syncStatus === 'synced' && (
                 <span className="inline-flex items-center gap-1.5 text-emerald-300 font-extrabold tracking-wide">
@@ -564,19 +564,19 @@ export const ResidentialTrackingView: React.FC = () => {
           </p>
         </div>
 
-        {/* Right action button group (always aligned in one clean row) */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 self-start lg:self-center">
+        {/* Right action button group (always aligned cleanly on desktop, wrapping gracefully without overflowing on mobile) */}
+        <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2 sm:gap-2.5 w-full lg:w-auto self-stretch lg:self-center">
           <button
             type="button"
             id="btn-new-residential-sale"
             onClick={handleOpenNewModal}
-            className="flex items-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black px-4 py-2.5 rounded-xl shadow-sm hover:shadow transition-all text-xs sm:text-sm cursor-pointer whitespace-nowrap"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-white text-red-600 hover:bg-red-50 active:scale-95 font-black px-4 py-2.5 rounded-xl shadow-sm hover:shadow transition-all text-xs sm:text-sm cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>NOVA VENDA RESIDENCIAL</span>
           </button>
 
-          <div className="flex items-center gap-1.5 bg-black/25 p-1 rounded-xl border border-white/15">
+          <div className="flex items-center justify-center gap-1.5 bg-black/25 p-1 rounded-xl border border-white/15 shrink-0">
             <button
               type="button"
               id="btn-print-residential"
@@ -982,17 +982,17 @@ export const ResidentialTrackingView: React.FC = () => {
       {/* ========================================================================= */}
       {/* TABELA DE ACOMPANHAMENTO RESIDENCIAL                                      */}
       {/* ========================================================================= */}
-      <div id="residential-sales-table-card" className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div id="residential-sales-table-card" className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden w-full max-w-full">
         {/* Table Title Bar */}
         <div className="px-4 py-3.5 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block shrink-0" />
             <h3 className="font-extrabold text-xs sm:text-sm tracking-wide uppercase">
               Planilha de Instalações Residenciais ({filteredSales.length}{' '}
               {filteredSales.length === 1 ? 'registro' : 'registros'})
             </h3>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 self-end sm:self-auto">
             <span className="text-[11px] text-slate-400 font-mono hidden md:inline">
               Clique no botão de status para alternar
             </span>
@@ -1000,7 +1000,7 @@ export const ResidentialTrackingView: React.FC = () => {
               type="button"
               id="btn-lancar-dados-table-bar"
               onClick={handleOpenNewModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>+ LANÇAR DADOS</span>
@@ -1009,8 +1009,8 @@ export const ResidentialTrackingView: React.FC = () => {
         </div>
 
         {/* Responsive Table Scroll Container */}
-        <div className="overflow-x-auto">
-          <table id="residential-sales-table" className="w-full text-left border-collapse text-xs">
+        <div className="w-full max-w-full overflow-x-auto touch-pan-x">
+          <table id="residential-sales-table" className="w-full text-left border-collapse text-xs min-w-[760px]">
             <thead>
               <tr className="bg-slate-100/90 text-slate-700 font-extrabold uppercase text-[11px] border-b border-slate-200 select-none">
                 <th className="py-3 px-3.5 text-center whitespace-nowrap">Contrato</th>

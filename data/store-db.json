@@ -2,11 +2,17 @@
   "version": 2,
   "storeName": "Claro — Shopping Tietê Plaza",
   "sellers": [
-    {
-      "id": "s_diego",
-      "name": "Diego",
-      "active": true
-    }
+    { "id": "s_alex", "name": "Alex", "active": true },
+    { "id": "s_bruno", "name": "Bruno", "active": true },
+    { "id": "s_diego", "name": "Diego", "active": true },
+    { "id": "s_erick", "name": "Erick", "active": true },
+    { "id": "s_giulia", "name": "Giulia", "active": true },
+    { "id": "s_glaucia", "name": "Glaucia", "active": true },
+    { "id": "s_guilherme", "name": "Guilherme", "active": true },
+    { "id": "s_italo", "name": "Italo", "active": true },
+    { "id": "s_joao", "name": "João", "active": true },
+    { "id": "s_matheus", "name": "Matheus", "active": true },
+    { "id": "s_patrick", "name": "Patrick", "active": true }
   ],
   "months": {
     "2026-09": {
@@ -14,20 +20,13 @@
       "days": {
         "2026-09-01": {
           "date": "2026-09-01",
-          "passwordsCount": "42",
-          "values": {
-            "pos_titular_solar": {
-              "s_diego": 1
-            },
-            "pme_03": {
-              "s_giulia": 1,
-              "s_joao": 1
-            }
-          },
-          "updatedAt": "2026-09-01T15:30:00.000Z"
+          "passwordsCount": "",
+          "values": {},
+          "updatedAt": "2026-09-03T12:33:27.307Z"
         }
       }
     }
   },
-  "lastSelectedDate": "2026-09-01"
+  "lastSelectedDate": "2026-09-01",
+  "updatedAt": "2026-09-03T12:45:00.000Z"
 }

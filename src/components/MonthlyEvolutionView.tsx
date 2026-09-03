@@ -166,7 +166,7 @@ export const MonthlyEvolutionView: React.FC = () => {
       </div>
 
       {/* Full Monthly Comparison Matrix Table */}
-      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden w-full max-w-full">
         <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex items-center justify-between">
           <h3 className="text-sm font-black text-zinc-900 uppercase tracking-wider flex items-center gap-2">
             <Layers className="w-4 h-4 text-red-600" />
@@ -177,7 +177,7 @@ export const MonthlyEvolutionView: React.FC = () => {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto w-full max-w-full touch-pan-x">
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-zinc-100 text-zinc-700 text-[11px] uppercase tracking-wider font-extrabold border-b border-zinc-300">

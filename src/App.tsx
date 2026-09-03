@@ -19,7 +19,7 @@ const AppContent: React.FC = () => {
   const [isRadioOpen, setIsRadioOpen] = useState<boolean>(false);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-red-500 selection:text-white">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-slate-50 text-slate-900 selection:bg-red-500 selection:text-white">
       {/* Splash Opening Screen */}
       {!hasEntered && (
         <SplashScreen onEnter={() => setHasEntered(true)} />
@@ -38,7 +38,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 min-w-0">
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'daily-entry' && <DailyEntryGrid />}
         {activeTab === 'residential-tracking' && <ResidentialTrackingView />}

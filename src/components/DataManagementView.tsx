@@ -16,6 +16,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useSales } from '../context/SalesContext';
+import { DEFAULT_SELLERS } from '../data/categories';
 
 export const DataManagementView: React.FC = () => {
   const {
@@ -246,7 +247,7 @@ export const DataManagementView: React.FC = () => {
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    {database.sellers.length > 1 && (
+                    {!DEFAULT_SELLERS.some((d) => d.id === seller.id) && database.sellers.length > 1 && (
                       <button
                         onClick={() => {
                           if (window.confirm(`Deseja remover ${seller.name} da equipe?`)) {

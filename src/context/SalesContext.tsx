@@ -60,6 +60,39 @@ export const sortSellersAlphabetically = (sellersList: Seller[]): Seller[] => {
   );
 };
 
+export const ensureAllDefaultSellers = (sellersList: Seller[] | undefined): Seller[] => {
+  const map = new Map<string, Seller>();
+  // Pre-fill with all 11 default official team sellers
+  DEFAULT_SELLERS.forEach((s) => {
+    map.set(s.id, { ...s, active: true });
+  });
+
+  if (Array.isArray(sellersList)) {
+    sellersList.forEach((s) => {
+      if (s && s.id) {
+        const def = map.get(s.id);
+        map.set(s.id, {
+          id: s.id,
+          name: s.name || def?.name || s.id,
+          active: true, // Keep all team sellers permanently active on the daily table
+        });
+      }
+    });
+  }
+
+  return sortSellersAlphabetically(Array.from(map.values()));
+};
+
+export const sanitizeStoreDatabase = (db: StoreDatabase | null | undefined): StoreDatabase => {
+  if (!db || typeof db !== 'object') {
+    return createCleanDatabase();
+  }
+  return {
+    ...db,
+    sellers: ensureAllDefaultSellers(db.sellers),
+  };
+};
+
 const SalesContext = createContext<SalesContextType | null>(null);
 
 export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -70,11 +103,8 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed && Array.isArray(parsed.sellers) && parsed.sellers.length > 0) {
-          return {
-            ...parsed,
-            sellers: sortSellersAlphabetically(parsed.sellers),
-          };
+        if (parsed) {
+          return sanitizeStoreDatabase(parsed);
         }
       }
     } catch (e) {
@@ -123,12 +153,13 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const res = await fetchRemoteStoreDatabase();
       if (res.success && res.data) {
+        const sanitized = sanitizeStoreDatabase(res.data);
         const current = databaseRef.current;
-        if (!areStoreDatabasesEqual(current, res.data)) {
+        if (!areStoreDatabasesEqual(current, sanitized)) {
           // Server is the single source of truth: apply server data directly
-          setDatabase(res.data);
+          setDatabase(sanitized);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(res.data));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           } catch {}
         }
         setSyncStatus('synced');
@@ -172,16 +203,18 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (remoteRes.success && remoteRes.data) {
           // Server is the single source of truth: adopt server data directly
-          setDatabase(remoteRes.data);
+          const sanitized = sanitizeStoreDatabase(remoteRes.data);
+          setDatabase(sanitized);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteRes.data));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           } catch {}
           setSyncStatus('synced');
           setLastSyncTimeString(remoteRes.updatedAt);
         } else if (localCached && Object.keys(localCached.months || {}).length > 0) {
           // Remote was empty or fresh, but local has data: push to remote
-          await pushRemoteStoreDatabase(localCached);
-          setDatabase(localCached);
+          const sanitized = sanitizeStoreDatabase(localCached);
+          await pushRemoteStoreDatabase(sanitized);
+          setDatabase(sanitized);
           setSyncStatus('synced');
         } else if (!remoteRes.success) {
           setSyncStatus('error');
@@ -476,6 +509,11 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const removeSeller = (sellerId: string) => {
+    const isDefault = DEFAULT_SELLERS.some((d) => d.id === sellerId);
+    if (isDefault) {
+      showToast('Os 11 vendedores da equipe oficial são mantidos fixos na folha de lançamento diário.', 'info');
+      return;
+    }
     const prev = databaseRef.current;
     const updated: StoreDatabase = {
       ...prev,

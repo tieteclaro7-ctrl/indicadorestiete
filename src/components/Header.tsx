@@ -43,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
     manualSync,
   } = useSales();
   const [radioState, setRadioState] = useState<RadioState>(globalAudioEngine.getState());
+  const activeTabRef = React.useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const unsub = globalAudioEngine.subscribe((state) => {
@@ -50,6 +51,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (activeTabRef.current) {
+      activeTabRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, [activeTab]);
 
   const handleTogglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,22 +89,22 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
       {/* Top red header bar */}
       <div className="bg-red-600 text-white px-3 sm:px-6 py-2.5">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5">
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center text-red-600 font-black text-base sm:text-lg shadow-sm shrink-0">
               C
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-lg font-extrabold tracking-tight leading-tight uppercase truncate">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xs sm:text-base lg:text-lg font-extrabold tracking-tight leading-tight uppercase truncate">
                 Dashboard de Vendas — CLARO Tietê Plaza
               </h1>
-              <p className="text-[11px] sm:text-xs text-red-100 font-medium truncate">
+              <p className="text-[10px] sm:text-xs text-red-100 font-medium truncate">
                 Controle Diário de Indicadores • LOJA CLARO Shopping Tietê Plaza
               </p>
             </div>
           </div>
 
           {/* Quick Controls: Radio Mix Player + Date */}
-          <div className="flex items-center gap-2 self-start lg:self-auto shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 self-stretch sm:self-start lg:self-auto shrink-0 flex-wrap max-w-full">
             {/* RÁDIO MIX FM 106.3 SP LIVE HEADER BAR CONTROLLER */}
             <div
               id="header-radio-mix-controller"
@@ -244,10 +255,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
       </div>
 
       {/* Navigation Tabs */}
-      <div className="max-w-7xl mx-auto px-2 sm:px-6">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 w-full max-w-full overflow-hidden">
         <nav
           id="header-nav-tabs"
-          className="flex space-x-1.5 overflow-x-auto py-2 no-scrollbar touch-pan-x"
+          className="flex space-x-1.5 overflow-x-auto py-2 scroll-smooth no-scrollbar touch-pan-x w-full max-w-full"
           aria-label="Tabs"
         >
           {navItems.map((item) => {
@@ -256,6 +267,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
             return (
               <button
                 key={item.id}
+                ref={isActive ? activeTabRef : undefined}
                 id={`nav-tab-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
                 className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${

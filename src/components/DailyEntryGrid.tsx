@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useSales } from '../context/SalesContext';
-import { ALL_INDICATORS, CATEGORIES } from '../data/categories';
+import { ALL_INDICATORS, CATEGORIES, DEFAULT_SELLERS } from '../data/categories';
 import { formatDateBR, formatLongDateBR, formatMonthLabel } from '../utils/calculations';
 import { exportDailyReportPDF } from '../utils/pdfExport';
 
@@ -43,12 +43,28 @@ export const DailyEntryGrid: React.FC = () => {
     manualSync,
   } = useSales();
 
-  const [editingSellerId, setEditingSellerId] = useState<string | null>(null);
-  const [editingSellerName, setEditingSellerName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
 
-  const activeSellers = database.sellers.filter((s) => s.active);
+  // Maintain all 11 official team sellers permanently without losing or altering any seller columns
+  const activeSellers = React.useMemo(() => {
+    const list = database.sellers && database.sellers.length > 0 ? database.sellers : DEFAULT_SELLERS;
+    const sellerMap = new Map<string, any>();
+    DEFAULT_SELLERS.forEach((s) => sellerMap.set(s.id, { ...s, active: true }));
+    list.forEach((s) => {
+      if (s && s.id) {
+        const def = sellerMap.get(s.id);
+        sellerMap.set(s.id, {
+          id: s.id,
+          name: s.name || def?.name || s.id,
+          active: true,
+        });
+      }
+    });
+    return Array.from(sellerMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+    );
+  }, [database.sellers]);
 
   // Real-time calculation of row totals, column totals, and grand total
   // Note: Category subtotals (TOTAL GROSS, TOTAL M-PLAY, etc.) are computed separately
@@ -134,18 +150,6 @@ export const DailyEntryGrid: React.FC = () => {
   const handleToday = () => {
     const now = new Date();
     setSelectedDate(now.toISOString().substring(0, 10));
-  };
-
-  const startEditingSeller = (sellerId: string, currentName: string) => {
-    setEditingSellerId(sellerId);
-    setEditingSellerName(currentName);
-  };
-
-  const saveSellerRename = () => {
-    if (editingSellerId && editingSellerName.trim()) {
-      updateSellerName(editingSellerId, editingSellerName.trim());
-    }
-    setEditingSellerId(null);
   };
 
   return (
@@ -280,7 +284,7 @@ export const DailyEntryGrid: React.FC = () => {
       </div>
 
       {/* Spreadsheet Table Container */}
-      <div className="bg-white rounded-b-2xl border border-t-0 border-zinc-200 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-b-2xl border border-t-0 border-zinc-200 shadow-sm overflow-x-auto w-full max-w-full touch-pan-x">
         <table id="daily-sales-grid-table" className="w-full text-left border-collapse min-w-[900px]">
           {/* Table Header: Column Sellers */}
           <thead>
@@ -291,32 +295,13 @@ export const DailyEntryGrid: React.FC = () => {
               {activeSellers.map((seller) => (
                 <th
                   key={seller.id}
-                  className="py-2 px-1.5 text-center border-r border-zinc-200 min-w-[70px] group relative hover:bg-zinc-200 transition-colors"
+                  className="py-2.5 px-2 text-center border-r border-zinc-200 min-w-[70px] select-none"
                 >
-                  {editingSellerId === seller.id ? (
-                    <div className="flex items-center gap-1 justify-center">
-                      <input
-                        type="text"
-                        value={editingSellerName}
-                        onChange={(e) => setEditingSellerName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && saveSellerRename()}
-                        className="w-16 bg-white border border-red-400 rounded px-1 text-xs text-zinc-900 font-bold"
-                        autoFocus
-                      />
-                      <button onClick={saveSellerRename} className="text-emerald-600 hover:text-emerald-700">
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => startEditingSeller(seller.id, seller.name)}
-                      className="cursor-pointer flex items-center justify-center gap-1 py-1"
-                      title="Clique para renomear este vendedor"
-                    >
-                      <span className="truncate">{seller.name}</span>
-                      <Edit2 className="w-2.5 h-2.5 text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  )}
+                  <div className="flex items-center justify-center py-1">
+                    <span className="truncate font-extrabold text-[11px] text-zinc-800 tracking-wider">
+                      {seller.name}
+                    </span>
+                  </div>
                 </th>
               ))}
               <th className="py-2.5 px-3 text-center bg-zinc-800 text-white font-black w-24 sticky right-0 z-10">

@@ -232,23 +232,77 @@ function saveDiskResidentialSales(sales: any[]) {
   }
 }
 
+const DEFAULT_STORE_SELLERS = [
+  { id: 's_alex', name: 'Alex', active: true },
+  { id: 's_bruno', name: 'Bruno', active: true },
+  { id: 's_diego', name: 'Diego', active: true },
+  { id: 's_erick', name: 'Erick', active: true },
+  { id: 's_giulia', name: 'Giulia', active: true },
+  { id: 's_glaucia', name: 'Glaucia', active: true },
+  { id: 's_guilherme', name: 'Guilherme', active: true },
+  { id: 's_italo', name: 'Italo', active: true },
+  { id: 's_joao', name: 'João', active: true },
+  { id: 's_matheus', name: 'Matheus', active: true },
+  { id: 's_patrick', name: 'Patrick', active: true },
+];
+
+function sanitizeStoreDb(db: any): any {
+  if (!db || typeof db !== 'object') {
+    return {
+      version: 2,
+      storeName: 'Claro — Shopping Tietê Plaza',
+      sellers: DEFAULT_STORE_SELLERS,
+      months: {},
+      lastSelectedDate: new Date().toISOString().substring(0, 10),
+    };
+  }
+
+  // Ensure all 11 official team sellers are ALWAYS preserved and active
+  const sellerMap = new Map<string, any>();
+  DEFAULT_STORE_SELLERS.forEach((s) => sellerMap.set(s.id, { ...s }));
+
+  if (Array.isArray(db.sellers)) {
+    db.sellers.forEach((s: any) => {
+      if (s && s.id) {
+        const def = sellerMap.get(s.id);
+        sellerMap.set(s.id, {
+          id: s.id,
+          name: s.name || def?.name || s.id,
+          active: true,
+        });
+      }
+    });
+  }
+
+  const finalSellers = Array.from(sellerMap.values()).sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), 'pt-BR', { sensitivity: 'base' })
+  );
+
+  return {
+    ...db,
+    sellers: finalSellers,
+  };
+}
+
 function loadDiskStoreDb(): any {
   try {
     if (fs.existsSync(STORE_DB_FILE)) {
       const raw = fs.readFileSync(STORE_DB_FILE, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return sanitizeStoreDb(parsed);
     }
   } catch (err) {
     console.warn("Error reading store db file:", err);
   }
-  return null;
+  return sanitizeStoreDb(null);
 }
 
 function saveDiskStoreDb(db: any) {
-  sharedStoreDb = db;
+  const sanitized = sanitizeStoreDb(db);
+  sharedStoreDb = sanitized;
   lastSyncTimestamp = new Date().toISOString();
   try {
-    fs.writeFileSync(STORE_DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+    fs.writeFileSync(STORE_DB_FILE, JSON.stringify(sanitized, null, 2), "utf-8");
   } catch (err) {
     console.warn("Error writing store db file:", err);
   }

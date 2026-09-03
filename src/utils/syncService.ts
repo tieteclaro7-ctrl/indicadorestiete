@@ -371,6 +371,20 @@ export interface RemoteDbPushResult {
   error?: string;
 }
 
+const DEFAULT_STORE_SELLERS = [
+  { id: 's_alex', name: 'Alex', active: true },
+  { id: 's_bruno', name: 'Bruno', active: true },
+  { id: 's_diego', name: 'Diego', active: true },
+  { id: 's_erick', name: 'Erick', active: true },
+  { id: 's_giulia', name: 'Giulia', active: true },
+  { id: 's_glaucia', name: 'Glaucia', active: true },
+  { id: 's_guilherme', name: 'Guilherme', active: true },
+  { id: 's_italo', name: 'Italo', active: true },
+  { id: 's_joao', name: 'João', active: true },
+  { id: 's_matheus', name: 'Matheus', active: true },
+  { id: 's_patrick', name: 'Patrick', active: true },
+];
+
 // Helper to safely merge local and remote databases without losing any entries
 export function mergeStoreDatabases(
   local: StoreDatabase | null | undefined,
@@ -383,7 +397,7 @@ export function mergeStoreDatabases(
     return {
       version: 2,
       storeName: 'Claro — Shopping Tietê Plaza',
-      sellers: [],
+      sellers: DEFAULT_STORE_SELLERS,
       months: {},
       lastSelectedDate: today,
     };
@@ -392,18 +406,27 @@ export function mergeStoreDatabases(
   const baseLocal = local!;
   const baseRemote = remote!;
 
-  // Merge sellers: keep unique sellers, prefer remote name if available, preserve active local sellers
+  // Merge sellers: pre-fill with all 11 official team sellers so none are ever dropped
   const sellerMap = new Map<string, any>();
+  DEFAULT_STORE_SELLERS.forEach((s) => sellerMap.set(s.id, { ...s, active: true }));
+
   (baseLocal.sellers || []).forEach((s) => {
-    if (s && s.id) sellerMap.set(s.id, { ...s });
+    if (s && s.id) {
+      const existing = sellerMap.get(s.id);
+      sellerMap.set(s.id, {
+        id: s.id,
+        name: s.name || existing?.name || s.id,
+        active: true,
+      });
+    }
   });
   (baseRemote.sellers || []).forEach((s) => {
     if (s && s.id) {
       const existing = sellerMap.get(s.id);
       sellerMap.set(s.id, {
         id: s.id,
-        name: s.name || existing?.name || '',
-        active: s.active !== undefined ? s.active : existing?.active ?? true,
+        name: s.name || existing?.name || s.id,
+        active: true,
       });
     }
   });
