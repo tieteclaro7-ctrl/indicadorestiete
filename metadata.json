@@ -1,6 +1,6 @@
 {
-  "name": "Dashboard de Vendas — CLARO Tietê Plaza",
-  "description": "Controle Diário de Indicadores • LOJA CLARO Shopping Tietê Plaza",
+  "name": "DASHBOARD DE VENDAS",
+  "description": "Sistema de acompanhamento de vendas e indicadores da Loja Claro — Shopping Tietê Plaza.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

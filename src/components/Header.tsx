@@ -24,6 +24,7 @@ import { useSales } from '../context/SalesContext';
 import { formatMonthLabel } from '../utils/calculations';
 import { ViewTab } from '../types';
 import { globalAudioEngine, RadioState } from '../utils/audioPlayer';
+import { PwaInstallButton } from './PwaInstallPrompt';
 
 interface HeaderProps {
   onToggleRadio?: () => void;
@@ -190,6 +191,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
                 </button>
               )}
             </div>
+
+            {/* PWA Install Button (Exibido apenas quando não estiver instalado) */}
+            <PwaInstallButton />
 
             {/* Cross-device Cloud Sync Status Badge */}
             <button
