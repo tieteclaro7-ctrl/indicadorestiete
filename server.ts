@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -32,45 +33,352 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", app: "Dashboard de Vendas Tietê Plaza" });
 });
 
-// Shared in-memory data store for cross-device synchronization
+// ---------------------------------------------------------------------------
+// Shared Persistent Data Store for Cross-Device Synchronization
+// ---------------------------------------------------------------------------
+const DATA_DIR = path.join(process.cwd(), "data");
+const RESIDENTIAL_FILE = path.join(DATA_DIR, "residential-sales.json");
+const STORE_DB_FILE = path.join(DATA_DIR, "store-db.json");
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+const SEED_RESIDENTIAL_SALES = [
+  {
+    id: 'res-sale-1',
+    contract: '1048/2026',
+    installationDate: '2026-08-28',
+    period: '8:00 às 12:00',
+    solar: 'SIM',
+    mplay: 'SIM',
+    service: 'Fibra 500 Mega',
+    secondPointVirtua: 'NÃO',
+    cpf: '348.912.840-19',
+    status: 'CONECTADO',
+    sellerName: 'ALEX RIBEIRO',
+    notes: 'Instalação concluída com sucesso no período matutino.',
+    createdAt: '2026-08-28T09:30:00.000Z',
+    updatedAt: '2026-08-28T11:45:00.000Z',
+  },
+  {
+    id: 'res-sale-2',
+    contract: '1052/2026',
+    installationDate: '2026-08-28',
+    period: '12:00 às 15:00',
+    solar: 'NÃO',
+    mplay: 'SIM',
+    service: 'Fibra 750 Mega',
+    secondPointVirtua: 'SIM',
+    cpf: '412.783.921-55',
+    status: 'PENDENTE',
+    sellerName: 'LUCAS RODRIGUES',
+    notes: 'Aguardando equipe técnica externa.',
+    createdAt: '2026-08-28T10:15:00.000Z',
+    updatedAt: '2026-08-28T14:20:00.000Z',
+  },
+  {
+    id: 'res-sale-3',
+    contract: '1059/2026',
+    installationDate: '2026-08-29',
+    period: '15:00 às 18:00',
+    solar: 'SIM',
+    mplay: 'NÃO',
+    service: 'Fibra 1 Giga',
+    secondPointVirtua: 'SIM',
+    cpf: '298.451.762-08',
+    status: 'CONECTADO',
+    sellerName: 'MATHEUS SILVA',
+    notes: 'Cliente optou por plano Gamer 1 Giga.',
+    createdAt: '2026-08-29T11:00:00.000Z',
+    updatedAt: '2026-08-29T16:30:00.000Z',
+  },
+  {
+    id: 'res-sale-4',
+    contract: '1063/2026',
+    installationDate: '2026-08-30',
+    period: '8:00 às 12:00',
+    solar: 'NÃO',
+    mplay: 'NÃO',
+    service: 'Fibra 350 Mega',
+    secondPointVirtua: 'NÃO',
+    cpf: '185.632.490-44',
+    status: 'DESCONECTADO',
+    sellerName: 'GABRIEL SOUZA',
+    notes: 'Cliente ausente no endereço. Quebra de instalação.',
+    createdAt: '2026-08-30T08:45:00.000Z',
+    updatedAt: '2026-08-30T11:50:00.000Z',
+  },
+  {
+    id: 'res-sale-5',
+    contract: '1070/2026',
+    installationDate: '2026-08-31',
+    period: '12:00 às 15:00',
+    solar: 'SIM',
+    mplay: 'SIM',
+    service: 'Fibra 500 Mega',
+    secondPointVirtua: 'NÃO',
+    cpf: '523.109.847-33',
+    status: 'PENDENTE',
+    sellerName: 'ISABELA LIMA',
+    notes: 'Adesão conjunta Solar + M-Play agendada.',
+    createdAt: '2026-08-31T09:10:00.000Z',
+    updatedAt: '2026-08-31T13:40:00.000Z',
+  },
+  {
+    id: 'res-sale-6',
+    contract: '1075/2026',
+    installationDate: '2026-08-31',
+    period: '15:00 às 18:00',
+    solar: 'NÃO',
+    mplay: 'SIM',
+    service: 'Fibra 750 Mega',
+    secondPointVirtua: 'SIM',
+    cpf: '371.492.650-89',
+    status: 'CONECTADO',
+    sellerName: 'FELIPE COSTA',
+    notes: 'Instalação concluída.',
+    createdAt: '2026-08-31T14:00:00.000Z',
+    updatedAt: '2026-08-31T17:10:00.000Z',
+  },
+];
+
+function deduplicateList(list: any[]): any[] {
+  if (!Array.isArray(list)) return [];
+  const map = new Map<string, any>();
+  for (const item of list) {
+    if (!item) continue;
+    const id = item.id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const existing = map.get(id);
+    if (!existing) {
+      map.set(id, { ...item, id });
+    } else {
+      const exTime = new Date(existing.updatedAt || 0).getTime();
+      const itemTime = new Date(item.updatedAt || 0).getTime();
+      if (itemTime >= exTime) {
+        map.set(id, { ...item, id });
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const da = new Date(a.installationDate || a.createdAt || 0).getTime();
+    const db = new Date(b.installationDate || b.createdAt || 0).getTime();
+    return db - da;
+  });
+}
+
+// Memory caches declared before helper functions that reference them
 let sharedResidentialSales: any[] = [];
 let sharedStoreDb: any = null;
 let lastSyncTimestamp: string = new Date().toISOString();
 
-// Residential Sales sync endpoints
-app.get(["/api/residential-sales", "/.netlify/functions/residential"], (_req, res) => {
-  res.json({
-    success: true,
-    sales: sharedResidentialSales,
-    updatedAt: lastSyncTimestamp,
-  });
-});
+function loadDiskResidentialSales(): any[] {
+  try {
+    if (fs.existsSync(RESIDENTIAL_FILE)) {
+      const raw = fs.readFileSync(RESIDENTIAL_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return deduplicateList(parsed);
+      }
+    }
+  } catch (err) {
+    console.warn("Error reading residential sales file:", err);
+  }
+  // Initialize with seed sales if empty
+  saveDiskResidentialSales(SEED_RESIDENTIAL_SALES);
+  return deduplicateList(SEED_RESIDENTIAL_SALES);
+}
 
-app.post(["/api/residential-sales", "/.netlify/functions/residential"], (req, res) => {
-  const payload = req.body;
-  const sales = Array.isArray(payload) ? payload : payload.sales || [];
-  sharedResidentialSales = sales;
+function saveDiskResidentialSales(sales: any[]) {
+  const clean = deduplicateList(sales);
+  sharedResidentialSales = clean;
   lastSyncTimestamp = new Date().toISOString();
+  try {
+    fs.writeFileSync(RESIDENTIAL_FILE, JSON.stringify(clean, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Error writing residential sales file:", err);
+  }
+}
+
+function loadDiskStoreDb(): any {
+  try {
+    if (fs.existsSync(STORE_DB_FILE)) {
+      const raw = fs.readFileSync(STORE_DB_FILE, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.warn("Error reading store db file:", err);
+  }
+  return null;
+}
+
+function saveDiskStoreDb(db: any) {
+  sharedStoreDb = db;
+  lastSyncTimestamp = new Date().toISOString();
+  try {
+    fs.writeFileSync(STORE_DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("Error writing store db file:", err);
+  }
+}
+
+// Initialize memory caches from disk
+sharedResidentialSales = loadDiskResidentialSales();
+sharedStoreDb = loadDiskStoreDb();
+
+const RESIDENTIAL_ROUTES = [
+  "/api/residential-sales",
+  "/.netlify/functions/residential-sales",
+  "/.netlify/functions/residential",
+];
+
+// 1. GET: Retrieve all current sales
+app.get(RESIDENTIAL_ROUTES, (_req, res) => {
+  const sales = loadDiskResidentialSales();
   res.json({
     success: true,
+    sales,
     count: sales.length,
     updatedAt: lastSyncTimestamp,
   });
 });
 
-// Store Database sync endpoints
-app.get(["/api/store-db", "/.netlify/functions/database"], (_req, res) => {
-  res.json({
+// 2. POST: Create a new sale OR replace full list
+app.post(RESIDENTIAL_ROUTES, (req, res) => {
+  const payload = req.body;
+  const currentSales = loadDiskResidentialSales();
+
+  // Full list replacement (e.g. backup import)
+  if (Array.isArray(payload.sales)) {
+    saveDiskResidentialSales(payload.sales);
+    return res.json({
+      success: true,
+      sales: sharedResidentialSales,
+      count: sharedResidentialSales.length,
+      updatedAt: lastSyncTimestamp,
+    });
+  }
+
+  // Single sale creation
+  const newSale = payload.sale || payload;
+  if (!newSale || (!newSale.contract && !newSale.id)) {
+    return res.status(400).json({
+      success: false,
+      error: "Dados inválidos para nova venda residencial.",
+    });
+  }
+
+  const now = new Date().toISOString();
+  const cleanItem = {
+    ...newSale,
+    id: newSale.id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+    createdAt: newSale.createdAt || now,
+    updatedAt: now,
+  };
+
+  const filtered = currentSales.filter((s: any) => s.id !== cleanItem.id);
+  const updated = [cleanItem, ...filtered];
+  saveDiskResidentialSales(updated);
+
+  return res.status(201).json({
     success: true,
-    data: sharedStoreDb,
+    sale: cleanItem,
+    sales: sharedResidentialSales,
+    count: sharedResidentialSales.length,
     updatedAt: lastSyncTimestamp,
   });
 });
 
-app.post(["/api/store-db", "/.netlify/functions/database"], (req, res) => {
+// 3. PUT / PATCH: Update an existing sale
+const handleUpdateSale = (req: express.Request, res: express.Response) => {
   const payload = req.body;
-  sharedStoreDb = payload.database || payload;
-  lastSyncTimestamp = new Date().toISOString();
+  const itemToUpdate = payload.sale || payload;
+
+  if (!itemToUpdate || !itemToUpdate.id) {
+    return res.status(400).json({
+      success: false,
+      error: "ID obrigatório para atualizar venda residencial.",
+    });
+  }
+
+  const currentSales = loadDiskResidentialSales();
+  const now = new Date().toISOString();
+  let found = false;
+
+  const updated = currentSales.map((item: any) => {
+    if (item.id === itemToUpdate.id) {
+      found = true;
+      return {
+        ...item,
+        ...itemToUpdate,
+        updatedAt: now,
+      };
+    }
+    return item;
+  });
+
+  if (!found) {
+    updated.unshift({
+      ...itemToUpdate,
+      createdAt: itemToUpdate.createdAt || now,
+      updatedAt: now,
+    });
+  }
+
+  saveDiskResidentialSales(updated);
+
+  return res.json({
+    success: true,
+    sale: itemToUpdate,
+    sales: sharedResidentialSales,
+    count: sharedResidentialSales.length,
+    updatedAt: lastSyncTimestamp,
+  });
+};
+
+app.put(RESIDENTIAL_ROUTES, handleUpdateSale);
+app.patch(RESIDENTIAL_ROUTES, handleUpdateSale);
+
+// 4. DELETE: Delete a sale by ID
+app.delete(RESIDENTIAL_ROUTES, (req, res) => {
+  const idToDelete = (req.query.id as string) || req.body?.id;
+
+  if (!idToDelete) {
+    return res.status(400).json({
+      success: false,
+      error: "ID obrigatório para exclusão da venda residencial.",
+    });
+  }
+
+  const currentSales = loadDiskResidentialSales();
+  const filtered = currentSales.filter((s: any) => s.id !== idToDelete);
+  saveDiskResidentialSales(filtered);
+
+  return res.json({
+    success: true,
+    deletedId: idToDelete,
+    sales: sharedResidentialSales,
+    count: sharedResidentialSales.length,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
+// Store Database sync endpoints
+const STORE_DB_ROUTES = ["/api/store-db", "/.netlify/functions/database"];
+
+app.get(STORE_DB_ROUTES, (_req, res) => {
+  const db = loadDiskStoreDb() || sharedStoreDb;
+  res.json({
+    success: true,
+    data: db,
+    updatedAt: lastSyncTimestamp,
+  });
+});
+
+app.post(STORE_DB_ROUTES, (req, res) => {
+  const payload = req.body;
+  const db = payload.database || payload;
+  saveDiskStoreDb(db);
   res.json({
     success: true,
     updatedAt: lastSyncTimestamp,

@@ -26,6 +26,8 @@ import {
   Radio,
   FileText,
   Sparkles,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import {
   ResidentialSale,
@@ -49,8 +51,12 @@ import {
 } from '../utils/residentialStorage';
 import {
   fetchRemoteResidentialSales,
-  pushRemoteResidentialSales,
+  createRemoteResidentialSale,
+  updateRemoteResidentialSale,
+  deleteRemoteResidentialSale,
+  replaceRemoteResidentialSales,
   getLastSyncTime,
+  formatCurrentTime,
 } from '../utils/syncService';
 import { exportResidentialTrackingPDF } from '../utils/residentialPdf';
 import { formatDateBR } from '../utils/calculations';
@@ -93,33 +99,86 @@ export const ResidentialTrackingView: React.FC = () => {
   const [formSellerName, setFormSellerName] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
 
-  // Load sales with remote synchronization on mount and visibility change
+  // Cross-Device Synchronization States
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
+  const [lastSyncTimeString, setLastSyncTimeString] = useState<string>(getLastSyncTime() || formatCurrentTime());
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const isPollingRef = useRef<boolean>(false);
+  const salesRef = useRef<ResidentialSale[]>(sales);
+  salesRef.current = sales;
+
+  // Comparison helper to avoid disturbing active form inputs or triggering redundant re-renders
+  const areSalesListsEqual = (a: ResidentialSale[], b: ResidentialSale[]): boolean => {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (
+        a[i].id !== b[i].id ||
+        a[i].updatedAt !== b[i].updatedAt ||
+        a[i].status !== b[i].status ||
+        a[i].contract !== b[i].contract ||
+        a[i].installationDate !== b[i].installationDate
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // Dedicated poll function: reads remote shared server data as single source of truth
+  const performSync = async (silent: boolean = false) => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
+    if (!silent) {
+      setSyncStatus('syncing');
+    }
+
+    try {
+      const res = await fetchRemoteResidentialSales();
+      if (res.success) {
+        if (!areSalesListsEqual(salesRef.current, res.sales)) {
+          setSales(res.sales);
+        }
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+      } else {
+        if (res.source === 'local' && salesRef.current.length === 0) {
+          setSales(res.sales);
+        }
+        setSyncStatus('error');
+      }
+    } catch {
+      setSyncStatus('error');
+    } finally {
+      isPollingRef.current = false;
+    }
+  };
+
+  // 5-second automatic polling interval + focus and visibility listeners
   useEffect(() => {
-    fetchRemoteResidentialSales().then(({ sales: loadedSales }) => {
-      setSales(loadedSales);
-    });
+    // Initial fetch on mount
+    performSync(false);
+
+    // 5-second polling interval for real-time synchronization between devices
+    const intervalId = setInterval(() => {
+      performSync(true);
+    }, 5000);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        fetchRemoteResidentialSales().then(({ sales: refreshed }) => {
-          setSales(refreshed);
-        });
+        performSync(false);
       }
     };
 
     window.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
+
     return () => {
+      clearInterval(intervalId);
       window.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleVisibility);
     };
   }, []);
-
-  // Save changes to localStorage and push to shared remote storage
-  const updateSalesList = (newSales: ResidentialSale[]) => {
-    setSales(newSales);
-    pushRemoteResidentialSales(newSales).catch(() => {});
-  };
 
   // Filtered sales
   const filteredSales = useMemo(() => {
@@ -165,8 +224,8 @@ export const ResidentialTrackingView: React.FC = () => {
     setIsFormModalOpen(true);
   };
 
-  // Handle Save / Submit
-  const handleSaveSale = (e: React.FormEvent) => {
+  // Handle Save / Submit: Directly syncs to remote server
+  const handleSaveSale = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formContract.trim()) {
@@ -179,85 +238,144 @@ export const ResidentialTrackingView: React.FC = () => {
     }
 
     const now = new Date().toISOString();
+    setIsSaving(true);
+    setSyncStatus('syncing');
 
-    if (editingSale) {
-      // Update existing
-      const updated = sales.map((item) => {
-        if (item.id === editingSale.id) {
-          return {
-            ...item,
-            contract: formatContract(formContract),
-            installationDate: formInstallationDate,
-            period: formPeriod,
-            solar: formSolar,
-            mplay: formMplay,
-            service: formService.trim() || 'Fibra 500 Mega',
-            secondPointVirtua: formSecondPointVirtua,
-            cpf: formatCPF(formCpf),
-            status: formStatus,
-            sellerName: formSellerName.trim() || undefined,
-            notes: formNotes.trim() || undefined,
-            updatedAt: now,
-          };
+    try {
+      if (editingSale) {
+        // Update existing sale on server
+        const updatedSale: ResidentialSale = {
+          ...editingSale,
+          contract: formatContract(formContract),
+          installationDate: formInstallationDate,
+          period: formPeriod,
+          solar: formSolar,
+          mplay: formMplay,
+          service: formService.trim() || 'Fibra 500 Mega',
+          secondPointVirtua: formSecondPointVirtua,
+          cpf: formatCPF(formCpf),
+          status: formStatus,
+          sellerName: formSellerName.trim() || undefined,
+          notes: formNotes.trim() || undefined,
+          updatedAt: now,
+        };
+
+        const res = await updateRemoteResidentialSale(updatedSale);
+        if (res.success && res.sales) {
+          setSales(res.sales);
+          setSyncStatus('synced');
+          setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+          showToast(`Venda do contrato ${formContract} atualizada e sincronizada!`, 'success');
+          setIsFormModalOpen(false);
+        } else {
+          setSyncStatus('error');
+          showToast(res.error || 'Erro ao sincronizar atualização com o servidor.', 'error');
         }
-        return item;
-      });
-      updateSalesList(updated);
-      showToast(`Venda do contrato ${formContract} atualizada com sucesso!`, 'success');
-    } else {
-      // Create new
-      const newSale: ResidentialSale = {
-        id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        contract: formatContract(formContract),
-        installationDate: formInstallationDate,
-        period: formPeriod,
-        solar: formSolar,
-        mplay: formMplay,
-        service: formService.trim() || 'Fibra 500 Mega',
-        secondPointVirtua: formSecondPointVirtua,
-        cpf: formatCPF(formCpf),
-        status: formStatus,
-        sellerName: formSellerName.trim() || undefined,
-        notes: formNotes.trim() || undefined,
-        createdAt: now,
-        updatedAt: now,
-      };
-      updateSalesList([newSale, ...sales]);
-      showToast(`Nova venda cadastrada para o contrato ${formContract}!`, 'success');
-    }
+      } else {
+        // Create new sale on server
+        const newSale: ResidentialSale = {
+          id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          contract: formatContract(formContract),
+          installationDate: formInstallationDate,
+          period: formPeriod,
+          solar: formSolar,
+          mplay: formMplay,
+          service: formService.trim() || 'Fibra 500 Mega',
+          secondPointVirtua: formSecondPointVirtua,
+          cpf: formatCPF(formCpf),
+          status: formStatus,
+          sellerName: formSellerName.trim() || undefined,
+          notes: formNotes.trim() || undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
 
-    setIsFormModalOpen(false);
+        const res = await createRemoteResidentialSale(newSale);
+        if (res.success && res.sales) {
+          setSales(res.sales);
+          setSyncStatus('synced');
+          setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+          showToast(`Nova venda do contrato ${formContract} salva e sincronizada!`, 'success');
+          setIsFormModalOpen(false);
+        } else {
+          setSyncStatus('error');
+          showToast(res.error || 'Erro ao salvar venda no servidor compartilhado.', 'error');
+        }
+      }
+    } catch {
+      setSyncStatus('error');
+      showToast('Falha na comunicação com o servidor compartilhado.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Toggle Status directly by clicking the status badge in the table: PENDENTE -> CONECTADO -> DESCONECTADO -> PENDENTE
-  const handleToggleStatus = (sale: ResidentialSale) => {
+  const handleToggleStatus = async (sale: ResidentialSale) => {
     const nextStatus = getNextResidentialStatus(sale.status);
+    const updatedSale: ResidentialSale = {
+      ...sale,
+      status: nextStatus,
+      updatedAt: new Date().toISOString(),
+    };
 
-    const updated = sales.map((item) => {
-      if (item.id === sale.id) {
-        return {
-          ...item,
-          status: nextStatus,
-          updatedAt: new Date().toISOString(),
-        };
+    // Optimistic update for instant responsiveness
+    const previousSales = sales;
+    const optimisticSales = sales.map((item) => (item.id === sale.id ? updatedSale : item));
+    setSales(optimisticSales);
+    setSyncStatus('syncing');
+
+    try {
+      const res = await updateRemoteResidentialSale(updatedSale);
+      if (res.success && res.sales) {
+        setSales(res.sales);
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+        showToast(
+          `Status do contrato ${sale.contract} alterado para ${nextStatus}!`,
+          nextStatus === 'CONECTADO' ? 'success' : nextStatus === 'PENDENTE' ? 'info' : 'warning'
+        );
+      } else {
+        setSales(previousSales);
+        setSyncStatus('error');
+        showToast('Não foi possível sincronizar a alteração de status.', 'error');
       }
-      return item;
-    });
-
-    updateSalesList(updated);
-    showToast(
-      `Status do contrato ${sale.contract} alterado para ${nextStatus}!`,
-      nextStatus === 'CONECTADO' ? 'success' : nextStatus === 'PENDENTE' ? 'info' : 'warning'
-    );
+    } catch {
+      setSales(previousSales);
+      setSyncStatus('error');
+      showToast('Erro ao sincronizar status.', 'error');
+    }
   };
 
-  // Confirm Delete
-  const handleConfirmDelete = () => {
+  // Confirm Delete: Syncs directly to server
+  const handleConfirmDelete = async () => {
     if (!deleteCandidate) return;
-    const updated = sales.filter((item) => item.id !== deleteCandidate.id);
-    updateSalesList(updated);
-    showToast(`Venda do contrato ${deleteCandidate.contract} excluída com sucesso!`, 'info');
+    const candidateId = deleteCandidate.id;
+    const candidateContract = deleteCandidate.contract;
+
+    const previousSales = sales;
+    const optimisticSales = sales.filter((item) => item.id !== candidateId);
+    setSales(optimisticSales);
+    setSyncStatus('syncing');
     setDeleteCandidate(null);
+
+    try {
+      const res = await deleteRemoteResidentialSale(candidateId);
+      if (res.success && res.sales) {
+        setSales(res.sales);
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+        showToast(`Venda do contrato ${candidateContract} excluída e sincronizada com sucesso!`, 'info');
+      } else {
+        setSales(previousSales);
+        setSyncStatus('error');
+        showToast('Não foi possível excluir do servidor compartilhado.', 'error');
+      }
+    } catch {
+      setSales(previousSales);
+      setSyncStatus('error');
+      showToast('Erro ao sincronizar exclusão.', 'error');
+    }
   };
 
   // Clear filters
@@ -272,7 +390,7 @@ export const ResidentialTrackingView: React.FC = () => {
     showToast(`Backup de ${sales.length} vendas residenciais exportado!`, 'success');
   };
 
-  // Import JSON Backup
+  // Import JSON Backup: Replaces and syncs with server
   const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -283,8 +401,18 @@ export const ResidentialTrackingView: React.FC = () => {
         showToast('Nenhum registro válido encontrado no arquivo.', 'error');
         return;
       }
-      updateSalesList(imported);
-      showToast(`${imported.length} vendas residenciais importadas com sucesso!`, 'success');
+      setSyncStatus('syncing');
+      const res = await replaceRemoteResidentialSales(imported);
+      if (res.success && res.sales) {
+        setSales(res.sales);
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedTime || formatCurrentTime());
+        showToast(`${imported.length} vendas residenciais importadas e sincronizadas no servidor!`, 'success');
+      } else {
+        setSales(imported);
+        setSyncStatus('error');
+        showToast('Vendas importadas localmente, mas houve falha ao sincronizar com o servidor.', 'warning');
+      }
     } catch (err: any) {
       showToast(err.message || 'Erro ao importar arquivo de backup.', 'error');
     } finally {
@@ -324,7 +452,7 @@ export const ResidentialTrackingView: React.FC = () => {
       {/* Top Banner & Action Header */}
       <div className="bg-gradient-to-r from-red-600 via-red-600 to-rose-700 rounded-2xl p-5 sm:p-6 text-white shadow-md border border-red-500/30 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {/* Left info column */}
-        <div className="space-y-1.5 min-w-0">
+        <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-2 flex-wrap text-xs">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/20 text-white font-black uppercase tracking-wider text-[11px]">
               <Home className="w-3.5 h-3.5" />
@@ -333,10 +461,45 @@ export const ResidentialTrackingView: React.FC = () => {
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/25 text-red-100 font-bold text-[11px]">
               Instalações & Contratos
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/25 text-red-100 font-medium text-[11px]">
-              <Clock className="w-3 h-3 text-red-200" />
-              Última sincronização: {getLastSyncTime()}
-            </span>
+
+            {/* Visual Sync Status Indicator (🟢 SINCRONIZADO / 🟠 SINCRONIZANDO... / 🔴 SEM CONEXÃO) */}
+            <div
+              id="sync-status-indicator"
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-black/30 text-white font-medium text-[11px] border border-white/10 backdrop-blur-xs"
+            >
+              {syncStatus === 'synced' && (
+                <span className="inline-flex items-center gap-1.5 text-emerald-300 font-extrabold tracking-wide">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"></span>
+                  <span>🟢 SINCRONIZADO</span>
+                </span>
+              )}
+              {syncStatus === 'syncing' && (
+                <span className="inline-flex items-center gap-1.5 text-amber-300 font-extrabold tracking-wide">
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-300" />
+                  <span>🟠 SINCRONIZANDO...</span>
+                </span>
+              )}
+              {syncStatus === 'error' && (
+                <span className="inline-flex items-center gap-1.5 text-rose-300 font-extrabold tracking-wide">
+                  <AlertCircle className="w-3 h-3 text-rose-300" />
+                  <span>🔴 SEM CONEXÃO</span>
+                </span>
+              )}
+              <span className="text-white/30 text-[10px]">|</span>
+              <span className="text-red-100 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-red-200" />
+                Última sincronização: <strong className="font-mono text-white ml-0.5">{lastSyncTimeString}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => performSync(false)}
+                disabled={syncStatus === 'syncing'}
+                title="Sincronizar agora manualmente"
+                className="p-0.5 hover:bg-white/20 active:scale-90 rounded text-white/80 hover:text-white transition-all cursor-pointer ml-0.5"
+              >
+                <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
           <h2 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white leading-tight">
@@ -1341,9 +1504,13 @@ export const ResidentialTrackingView: React.FC = () => {
                 <button
                   type="submit"
                   id="btn-submit-save-residential"
-                  className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer text-xs"
+                  disabled={isSaving}
+                  className={`px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold shadow-md hover:shadow-lg transition-all cursor-pointer text-xs flex items-center gap-2 ${
+                    isSaving ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
                 >
-                  {editingSale ? 'Atualizar Venda' : 'Cadastrar Venda'}
+                  {isSaving && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSaving ? 'Salvando...' : editingSale ? 'Atualizar Venda' : 'Cadastrar Venda'}</span>
                 </button>
               </div>
             </form>
