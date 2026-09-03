@@ -247,7 +247,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 w-full">
         <nav
           id="header-nav-tabs"
-          className="flex flex-wrap xl:flex-nowrap items-stretch gap-1 sm:gap-1.5 xl:space-x-1.5 xl:gap-0 py-2 w-full"
+          className="flex flex-wrap xl:flex-nowrap items-stretch gap-1.5 sm:gap-2 xl:space-x-1.5 xl:gap-0 py-2 w-full"
           aria-label="Tabs"
         >
           {navItems.map((item) => {
@@ -258,7 +258,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
                 key={item.id}
                 id={`nav-tab-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex-1 sm:flex-initial min-w-fit flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer ${
+                className={`flex-1 sm:flex-initial min-w-fit min-h-[40px] sm:min-h-[38px] flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-150 cursor-pointer touch-manipulation ${
                   isActive
                     ? 'bg-red-50 text-red-700 border border-red-200 shadow-xs'
                     : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-transparent'

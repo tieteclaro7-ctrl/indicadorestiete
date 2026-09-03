@@ -1,141 +1,202 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Download,
   Share,
   PlusSquare,
   X,
-  CheckCircle2,
   Smartphone,
+  Laptop,
+  Check,
 } from 'lucide-react';
 import {
   isRunningStandalone,
   isIosDevice,
   subscribeInstallPrompt,
   promptInstallApp,
+  hasNativeInstallPrompt,
+  isAppAlreadyInstalled,
 } from '../pwaRegistration';
 
 export const PwaInstallButton: React.FC = () => {
-  const [isStandalone, setIsStandalone] = useState(true);
-  const [canPromptInstall, setCanPromptInstall] = useState(false);
-  const [showIosModal, setShowIosModal] = useState(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
+  const [canPrompt, setCanPrompt] = useState<boolean>(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const isIos = isIosDevice();
 
   useEffect(() => {
-    setIsStandalone(isRunningStandalone());
+    // Verifica se já está rodando instalado como standalone
+    setIsInstalled(isAppAlreadyInstalled());
 
     const unsubscribe = subscribeInstallPrompt((canInstall) => {
-      setCanPromptInstall(canInstall);
+      setCanPrompt(canInstall);
+      setIsInstalled(isAppAlreadyInstalled());
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Se já está instalado e rodando como app standalone, não exibe botão de instalação
-  if (isStandalone) {
+  // Depois que o aplicativo estiver instalado, ocultar o botão automaticamente
+  if (isInstalled) {
     return null;
   }
 
-  // Se não é instalável no navegador atual (e não é iOS), oculta para não poluir
-  if (!canPromptInstall && !isIos) {
-    return null;
-  }
-
-  const handleInstallClick = async () => {
+  const handleButtonClick = async () => {
+    // 1. iPhone / Safari: iOS não suporta beforeinstallprompt; abre modal de instruções
     if (isIos) {
-      setShowIosModal(true);
+      setIsModalOpen(true);
       return;
     }
 
-    if (canPromptInstall) {
+    // 2. Android / Chrome: se beforeinstallprompt estiver disponível, abre prompt nativo
+    if (canPrompt || hasNativeInstallPrompt()) {
       const outcome = await promptInstallApp();
       if (outcome === 'accepted') {
-        setCanPromptInstall(false);
+        setIsInstalled(true);
       }
+      return;
     }
+
+    // 3. Caso o navegador não tenha disparado beforeinstallprompt, abre instrução em vez de ficar quebrado
+    setIsModalOpen(true);
   };
 
   return (
     <>
+      {/* Botão Visível no Header */}
       <button
         type="button"
         id="btn-pwa-install-header"
-        onClick={handleInstallClick}
-        title="Instalar aplicativo na tela inicial do celular ou computador"
-        className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-xl bg-white text-red-600 hover:bg-red-50 border border-white/60 text-[10px] sm:text-xs font-black transition-all cursor-pointer shadow-xs shrink-0 animate-pulse hover:animate-none"
+        onClick={handleButtonClick}
+        title="Instalar aplicativo no seu celular ou computador"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-red-600 hover:bg-red-50 active:bg-slate-100 border border-white/80 text-xs font-black transition-all cursor-pointer shadow-xs shrink-0 select-none"
       >
-        <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-        <span className="hidden sm:inline">Instalar App</span>
-        <span className="sm:hidden">App</span>
+        <span className="text-sm">📲</span>
+        <span className="tracking-wide uppercase">INSTALAR APP</span>
       </button>
 
-      {/* Modal explicativo específico para iPhone (iOS) */}
-      {showIosModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-slate-800 space-y-4 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between">
+      {/* Modal / Instrução Simples de Instalação */}
+      {isModalOpen && (
+        <div
+          id="modal-install-instructions-overlay"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            id="modal-install-instructions-card"
+            className="bg-white rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl border border-slate-200 text-slate-800 space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white">
-                  <Smartphone className="w-5 h-5" />
-                </div>
+                <span className="text-xl">📲</span>
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-900 leading-tight">
-                    Instalar no iPhone
+                  <h3 className="font-black text-base text-slate-900 leading-tight uppercase tracking-tight">
+                    INSTALAR APP
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    VENDAS Tietê Plaza
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    VENDAS TIETÊ PLAZA
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setShowIosModal(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                id="btn-close-install-modal-x"
+                onClick={() => setIsModalOpen(false)}
+                aria-label="Fechar"
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Para instalar este Dashboard como aplicativo no seu iPhone sem barra de endereços:
-            </p>
-
-            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs font-medium text-slate-700">
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-[11px] shrink-0">
-                  1
-                </span>
-                <p>
-                  Toque no botão <strong className="text-slate-900 inline-flex items-center gap-1 font-bold"><Share className="w-3.5 h-3.5 text-blue-600 inline" /> Compartilhar</strong> na barra inferior do Safari.
+            {/* Corpo do Modal: iPhone (iOS) */}
+            {isIos ? (
+              <div className="space-y-3 text-xs text-slate-700 font-medium">
+                <p className="font-bold text-slate-900">
+                  Para instalar no iPhone:
                 </p>
-              </div>
 
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-[11px] shrink-0">
-                  2
-                </span>
-                <p>
-                  Role para baixo e selecione <strong className="text-slate-900 inline-flex items-center gap-1 font-bold"><PlusSquare className="w-3.5 h-3.5 text-slate-800 inline" /> Adicionar à Tela de Início</strong>.
-                </p>
-              </div>
+                <div className="space-y-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-[11px] shrink-0">
+                      1
+                    </span>
+                    <p className="leading-snug">
+                      Toque em{' '}
+                      <strong className="text-slate-900 inline-flex items-center gap-1 font-bold">
+                        <Share className="w-3.5 h-3.5 text-blue-600 inline" /> Compartilhar
+                      </strong>{' '}
+                      na barra inferior do Safari.
+                    </p>
+                  </div>
 
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-[11px] shrink-0">
-                  3
-                </span>
-                <p>
-                  Toque em <strong className="text-slate-900 font-bold">Adicionar</strong> no canto superior direito. Pronto!
-                </p>
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-[11px] shrink-0">
+                      2
+                    </span>
+                    <p className="leading-snug">
+                      Toque em{' '}
+                      <strong className="text-slate-900 inline-flex items-center gap-1 font-bold">
+                        <PlusSquare className="w-3.5 h-3.5 text-slate-800 inline" /> ‘Adicionar à Tela de Início’
+                      </strong>.
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-[11px] shrink-0">
+                      3
+                    </span>
+                    <p className="leading-snug">
+                      Confirme em <strong className="text-red-600 font-bold">‘Adicionar’</strong> no topo direito.
+                    </p>
+                  </div>
+                </div>
               </div>
+            ) : (
+              /* Corpo do Modal: Android ou Computador quando o prompt nativo ainda não disparou */
+              <div className="space-y-3 text-xs text-slate-700 font-medium">
+                <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>No celular (Android / Chrome):</span>
+                </p>
+
+                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p>
+                    1. Toque nos <strong>três pontinhos (⋮)</strong> no canto superior do navegador.
+                  </p>
+                  <p>
+                    2. Selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.
+                  </p>
+                  <p>
+                    3. Confirme em <strong>"Instalar"</strong>.
+                  </p>
+                </div>
+
+                <p className="font-bold text-slate-900 flex items-center gap-1.5 pt-1">
+                  <Laptop className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>No computador (Chrome / Edge):</span>
+                </p>
+
+                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p>
+                    Clique no ícone de <strong>instalar (computador com seta para baixo)</strong> na barra de endereços do navegador.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Botão FECHAR obrigatório */}
+            <div className="pt-2">
+              <button
+                type="button"
+                id="btn-close-install-modal"
+                onClick={() => setIsModalOpen(false)}
+                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:bg-black text-white rounded-xl text-xs font-black transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Check className="w-4 h-4" />
+                <span>FECHAR</span>
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowIosModal(false)}
-              className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              Entendi
-            </button>
           </div>
         </div>
       )}

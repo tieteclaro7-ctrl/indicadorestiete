@@ -101,6 +101,14 @@ const notifyInstallListeners = (canInstall: boolean) => {
   installListeners.forEach((listener) => listener(canInstall));
 };
 
+export const hasNativeInstallPrompt = (): boolean => {
+  return deferredPrompt !== null;
+};
+
+export const isAppAlreadyInstalled = (): boolean => {
+  return isAppInstalled || isRunningStandalone();
+};
+
 export const subscribeInstallPrompt = (callback: (canInstall: boolean) => void) => {
   installListeners.add(callback);
   callback(deferredPrompt !== null && !isRunningStandalone());
