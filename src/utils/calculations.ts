@@ -23,8 +23,13 @@ export function formatMonthLabel(monthKey: string): string {
 
 export function formatDateBR(dateStr: string): string {
   if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year}`;
+  if (dateStr.includes('/')) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${day}/${month}/${year}`;
+  }
+  return dateStr;
 }
 
 export function formatLongDateBR(dateStr: string): string {

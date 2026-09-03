@@ -64,22 +64,6 @@
     "updatedAt": "2026-08-29T16:30:00.000Z"
   },
   {
-    "id": "res-sale-1",
-    "contract": "1048/2026",
-    "installationDate": "2026-08-28",
-    "period": "8:00 às 12:00",
-    "solar": "SIM",
-    "mplay": "SIM",
-    "service": "Fibra 500 Mega",
-    "secondPointVirtua": "NÃO",
-    "cpf": "348.912.840-19",
-    "status": "CONECTADO",
-    "sellerName": "ALEX RIBEIRO",
-    "notes": "Instalação concluída com sucesso no período matutino.",
-    "createdAt": "2026-08-28T09:30:00.000Z",
-    "updatedAt": "2026-08-28T11:45:00.000Z"
-  },
-  {
     "id": "res-sale-2",
     "contract": "1052/2026",
     "installationDate": "2026-08-28",

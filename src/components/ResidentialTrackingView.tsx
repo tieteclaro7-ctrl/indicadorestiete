@@ -28,6 +28,7 @@ import {
   Sparkles,
   RefreshCw,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import {
   ResidentialSale,
@@ -47,7 +48,14 @@ import {
   formatContract,
   getNextResidentialStatus,
   PERIOD_OPTIONS,
-  COMMON_RESIDENTIAL_SERVICES,
+  RESIDENTIAL_SELLERS,
+  RESIDENTIAL_PRODUCTS,
+  MPLAY_OPTIONS,
+  SOLAR_OPTIONS,
+  formatDateInput,
+  isoToBrDate,
+  brDateToIso,
+  getTodayBrDate,
 } from '../utils/residentialStorage';
 import {
   fetchRemoteResidentialSales,
@@ -85,25 +93,29 @@ export const ResidentialTrackingView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
+  const [formSaleDate, setFormSaleDate] = useState<string>(getTodayBrDate());
+  const [formInstallationDate, setFormInstallationDate] = useState<string>(getTodayBrDate());
+  const [formPeriod, setFormPeriod] = useState<ResidentialPeriod>('08:00-12:00');
   const [formContract, setFormContract] = useState<string>('');
-  const [formInstallationDate, setFormInstallationDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
-  const [formPeriod, setFormPeriod] = useState<ResidentialPeriod>('8:00 às 12:00');
-  const [formSolar, setFormSolar] = useState<YesNoOption>('NÃO');
-  const [formMplay, setFormMplay] = useState<YesNoOption>('NÃO');
-  const [formService, setFormService] = useState<string>('Fibra 500 Mega');
-  const [formSecondPointVirtua, setFormSecondPointVirtua] = useState<YesNoOption>('NÃO');
+  const [formSellerName, setFormSellerName] = useState<string>('');
+  const [formSolar, setFormSolar] = useState<string>('Não');
+  const [formService, setFormService] = useState<string>('Fibra 600 ou 500 mega');
+  const [formMplay, setFormMplay] = useState<string>('Não');
+  const [formSecondPointVirtua, setFormSecondPointVirtua] = useState<string>('Não');
   const [formCpf, setFormCpf] = useState<string>('');
   const [formStatus, setFormStatus] = useState<ResidentialStatus>('PENDENTE');
-  const [formSellerName, setFormSellerName] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
+
+  const saleDateCalendarRef = useRef<HTMLInputElement>(null);
+  const installDateCalendarRef = useRef<HTMLInputElement>(null);
 
   // Cross-Device Synchronization States
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
   const [lastSyncTimeString, setLastSyncTimeString] = useState<string>(getLastSyncTime() || formatCurrentTime());
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const isPollingRef = useRef<boolean>(false);
+  const isDeletingRef = useRef<boolean>(false);
   const salesRef = useRef<ResidentialSale[]>(sales);
   salesRef.current = sales;
 
@@ -127,7 +139,7 @@ export const ResidentialTrackingView: React.FC = () => {
 
   // Dedicated poll function: reads remote shared server data as single source of truth
   const performSync = async (silent: boolean = false) => {
-    if (isPollingRef.current) return;
+    if (isPollingRef.current || isDeletingRef.current) return;
     isPollingRef.current = true;
     if (!silent) {
       setSyncStatus('syncing');
@@ -192,17 +204,19 @@ export const ResidentialTrackingView: React.FC = () => {
 
   // Open modal for new sale
   const handleOpenNewModal = () => {
+    const todayBr = getTodayBrDate();
     setEditingSale(null);
+    setFormSaleDate(todayBr);
+    setFormInstallationDate(todayBr);
+    setFormPeriod('08:00-12:00');
     setFormContract('');
-    setFormInstallationDate(new Date().toISOString().slice(0, 10));
-    setFormPeriod('8:00 às 12:00');
-    setFormSolar('NÃO');
-    setFormMplay('NÃO');
-    setFormService('Fibra 500 Mega');
-    setFormSecondPointVirtua('NÃO');
+    setFormSellerName('');
+    setFormSolar('Não');
+    setFormService('Fibra 600 ou 500 mega');
+    setFormMplay('Não');
+    setFormSecondPointVirtua('Não');
     setFormCpf('');
     setFormStatus('PENDENTE');
-    setFormSellerName('');
     setFormNotes('');
     setIsFormModalOpen(true);
   };
@@ -210,16 +224,29 @@ export const ResidentialTrackingView: React.FC = () => {
   // Open modal for editing sale
   const handleOpenEditModal = (sale: ResidentialSale) => {
     setEditingSale(sale);
-    setFormContract(sale.contract);
-    setFormInstallationDate(sale.installationDate);
-    setFormPeriod(sale.period);
-    setFormSolar(sale.solar);
-    setFormMplay(sale.mplay);
-    setFormService(sale.service);
-    setFormSecondPointVirtua(sale.secondPointVirtua);
-    setFormCpf(sale.cpf);
-    setFormStatus(sale.status);
+    setFormSaleDate(
+      sale.saleDate
+        ? (sale.saleDate.includes('/') ? sale.saleDate : isoToBrDate(sale.saleDate))
+        : getTodayBrDate()
+    );
+    setFormInstallationDate(
+      sale.installationDate
+        ? (sale.installationDate.includes('/') ? sale.installationDate : isoToBrDate(sale.installationDate))
+        : getTodayBrDate()
+    );
+    setFormPeriod(sale.period || '08:00-12:00');
+    setFormContract(sale.contract || '');
     setFormSellerName(sale.sellerName || '');
+    setFormSolar(
+      String(sale.solar || '').toLowerCase() === 'sim' ? 'Sim' : 'Não'
+    );
+    setFormMplay(sale.mplay || 'Não');
+    setFormService(sale.service || 'Fibra 600 ou 500 mega');
+    setFormSecondPointVirtua(
+      String(sale.secondPointVirtua || '').toLowerCase() === 'sim' ? 'Sim' : 'Não'
+    );
+    setFormCpf(sale.cpf || '');
+    setFormStatus(sale.status || 'PENDENTE');
     setFormNotes(sale.notes || '');
     setIsFormModalOpen(true);
   };
@@ -228,12 +255,36 @@ export const ResidentialTrackingView: React.FC = () => {
   const handleSaveSale = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formContract.trim()) {
-      showToast('Por favor, informe o número do contrato.', 'error');
+    if (!formSaleDate.trim()) {
+      showToast('Por favor, informe a Data da Venda.', 'error');
       return;
     }
-    if (!formInstallationDate) {
-      showToast('Por favor, selecione a data de instalação.', 'error');
+    if (!formInstallationDate.trim()) {
+      showToast('Por favor, informe a Data de Instalação.', 'error');
+      return;
+    }
+    if (!formPeriod.trim()) {
+      showToast('Por favor, selecione o Horário / Período.', 'error');
+      return;
+    }
+    if (!formContract.trim()) {
+      showToast('Por favor, informe o Número do Contrato.', 'error');
+      return;
+    }
+    if (!formSellerName.trim()) {
+      showToast('Por favor, selecione o Vendedor responsável.', 'error');
+      return;
+    }
+    if (!formSolar) {
+      showToast('Por favor, informe se há Venda Solar.', 'error');
+      return;
+    }
+    if (!formService.trim()) {
+      showToast('Por favor, informe o Produto.', 'error');
+      return;
+    }
+    if (!formMplay) {
+      showToast('Por favor, selecione a opção MPLAY?.', 'error');
       return;
     }
 
@@ -246,16 +297,17 @@ export const ResidentialTrackingView: React.FC = () => {
         // Update existing sale on server
         const updatedSale: ResidentialSale = {
           ...editingSale,
-          contract: formatContract(formContract),
-          installationDate: formInstallationDate,
+          contract: formContract.trim(),
+          saleDate: formSaleDate.trim(),
+          installationDate: formInstallationDate.trim(),
           period: formPeriod,
           solar: formSolar,
           mplay: formMplay,
-          service: formService.trim() || 'Fibra 500 Mega',
+          service: formService.trim(),
           secondPointVirtua: formSecondPointVirtua,
           cpf: formatCPF(formCpf),
           status: formStatus,
-          sellerName: formSellerName.trim() || undefined,
+          sellerName: formSellerName.trim(),
           notes: formNotes.trim() || undefined,
           updatedAt: now,
         };
@@ -275,16 +327,17 @@ export const ResidentialTrackingView: React.FC = () => {
         // Create new sale on server
         const newSale: ResidentialSale = {
           id: `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          contract: formatContract(formContract),
-          installationDate: formInstallationDate,
+          contract: formContract.trim(),
+          saleDate: formSaleDate.trim(),
+          installationDate: formInstallationDate.trim(),
           period: formPeriod,
           solar: formSolar,
           mplay: formMplay,
-          service: formService.trim() || 'Fibra 500 Mega',
+          service: formService.trim(),
           secondPointVirtua: formSecondPointVirtua,
           cpf: formatCPF(formCpf),
           status: formStatus,
-          sellerName: formSellerName.trim() || undefined,
+          sellerName: formSellerName.trim(),
           notes: formNotes.trim() || undefined,
           createdAt: now,
           updatedAt: now,
@@ -347,34 +400,35 @@ export const ResidentialTrackingView: React.FC = () => {
     }
   };
 
-  // Confirm Delete: Syncs directly to server
+  // Confirm Delete: Follows strict sequence - wait for server confirmation before updating display
   const handleConfirmDelete = async () => {
-    if (!deleteCandidate) return;
+    if (!deleteCandidate || isDeleting) return;
     const candidateId = deleteCandidate.id;
     const candidateContract = deleteCandidate.contract;
 
-    const previousSales = sales;
-    const optimisticSales = sales.filter((item) => item.id !== candidateId);
-    setSales(optimisticSales);
+    setIsDeleting(true);
+    isDeletingRef.current = true;
     setSyncStatus('syncing');
-    setDeleteCandidate(null);
 
     try {
       const res = await deleteRemoteResidentialSale(candidateId);
-      if (res.success && res.sales) {
+      if (res.success && Array.isArray(res.sales)) {
+        // Step 7: Only update list after server confirmed successful deletion
         setSales(res.sales);
+        setDeleteCandidate(null);
         setSyncStatus('synced');
         setLastSyncTimeString(res.updatedTime || formatCurrentTime());
-        showToast(`Venda do contrato ${candidateContract} excluída e sincronizada com sucesso!`, 'info');
+        showToast(`Venda do contrato ${candidateContract} excluída definitivamente com sucesso!`, 'info');
       } else {
-        setSales(previousSales);
         setSyncStatus('error');
         showToast('Não foi possível excluir do servidor compartilhado.', 'error');
       }
     } catch {
-      setSales(previousSales);
       setSyncStatus('error');
       showToast('Erro ao sincronizar exclusão.', 'error');
+    } finally {
+      setIsDeleting(false);
+      isDeletingRef.current = false;
     }
   };
 
@@ -1210,24 +1264,54 @@ export const ResidentialTrackingView: React.FC = () => {
             {/* Form Body */}
             <form onSubmit={handleSaveSale} className="p-6 overflow-y-auto space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* 1. Contrato */}
+                {/* 1. Data da Venda */}
                 <div>
                   <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
-                    Número do Contrato <span className="text-red-600">*</span>
+                    Data da Venda <span className="text-red-600">*</span>
                   </label>
-                  <div className="relative">
+                  <div className="relative flex items-center">
                     <input
                       type="text"
                       required
-                      placeholder="Ex: 1048/2026"
-                      value={formContract}
-                      onChange={(e) => setFormContract(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-mono font-bold text-xs"
+                      placeholder="DD/MM/AAAA"
+                      maxLength={10}
+                      value={formSaleDate}
+                      onChange={(e) => setFormSaleDate(formatDateInput(e.target.value))}
+                      className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-bold text-xs"
                     />
-                    <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <Calendar className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                    <div className="absolute right-2.5 flex items-center">
+                      <input
+                        type="date"
+                        ref={saleDateCalendarRef}
+                        tabIndex={-1}
+                        aria-label="Selecionar Data da Venda no calendário"
+                        className="w-5 h-5 opacity-0 absolute inset-0 cursor-pointer"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setFormSaleDate(isoToBrDate(e.target.value));
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => {
+                          try {
+                            saleDateCalendarRef.current?.showPicker?.();
+                          } catch {
+                            saleDateCalendarRef.current?.focus();
+                          }
+                        }}
+                        className="text-slate-400 hover:text-red-600 cursor-pointer pointer-events-none"
+                        title="Selecionar no calendário"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Formato de referência: ____/____ (digitação livre)
+                    Formato DD/MM/AAAA (digite ou selecione no calendário)
                   </span>
                 </div>
 
@@ -1236,22 +1320,56 @@ export const ResidentialTrackingView: React.FC = () => {
                   <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
                     Data de Instalação <span className="text-red-600">*</span>
                   </label>
-                  <div className="relative">
+                  <div className="relative flex items-center">
                     <input
-                      type="date"
+                      type="text"
                       required
+                      placeholder="DD/MM/AAAA"
+                      maxLength={10}
                       value={formInstallationDate}
-                      onChange={(e) => setFormInstallationDate(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-bold text-xs"
+                      onChange={(e) => setFormInstallationDate(formatDateInput(e.target.value))}
+                      className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-bold text-xs"
                     />
-                    <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <Calendar className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+                    <div className="absolute right-2.5 flex items-center">
+                      <input
+                        type="date"
+                        ref={installDateCalendarRef}
+                        tabIndex={-1}
+                        aria-label="Selecionar Data de Instalação no calendário"
+                        className="w-5 h-5 opacity-0 absolute inset-0 cursor-pointer"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setFormInstallationDate(isoToBrDate(e.target.value));
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => {
+                          try {
+                            installDateCalendarRef.current?.showPicker?.();
+                          } catch {
+                            installDateCalendarRef.current?.focus();
+                          }
+                        }}
+                        className="text-slate-400 hover:text-red-600 cursor-pointer pointer-events-none"
+                        title="Selecionar no calendário"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Formato DD/MM/AAAA (digite ou selecione no calendário)
+                  </span>
                 </div>
 
-                {/* 3. Período */}
+                {/* 3. Horário / Período */}
                 <div>
                   <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
-                    Período da Instalação <span className="text-red-600">*</span>
+                    Horário / Período <span className="text-red-600">*</span>
                   </label>
                   <div className="relative">
                     <select
@@ -1269,11 +1387,58 @@ export const ResidentialTrackingView: React.FC = () => {
                     <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Opções exatas de janela técnica de agendamento
+                    Opções exatas de janela técnica
                   </span>
                 </div>
 
-                {/* 4. CPF do Cliente */}
+                {/* 4. Número do Contrato */}
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
+                    Número do Contrato <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: 1048/2026"
+                      value={formContract}
+                      onChange={(e) => setFormContract(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-mono font-bold text-xs"
+                    />
+                    <Hash className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Exemplo: 1048/2026 (digitação livre)
+                  </span>
+                </div>
+
+                {/* 5. Vendedor */}
+                <div>
+                  <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
+                    Vendedor <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      required
+                      value={formSellerName}
+                      onChange={(e) => setFormSellerName(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-bold text-xs cursor-pointer"
+                    >
+                      <option value="">Selecione o vendedor...</option>
+                      {RESIDENTIAL_SELLERS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Consultor responsável pela venda
+                  </span>
+                </div>
+
+                {/* CPF do Cliente (Campo adicional existente) */}
                 <div>
                   <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
                     CPF do Cliente
@@ -1287,7 +1452,7 @@ export const ResidentialTrackingView: React.FC = () => {
                       onChange={(e) => setFormCpf(formatCPF(e.target.value))}
                       className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-mono font-bold text-xs"
                     />
-                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
                     Máscara aplicada automaticamente
@@ -1295,31 +1460,31 @@ export const ResidentialTrackingView: React.FC = () => {
                 </div>
               </div>
 
-              {/* 5. Serviço / Plano Vendido */}
+              {/* 7. Produto */}
               <div>
                 <label className="block text-[11px] font-extrabold uppercase text-slate-700 mb-1">
-                  Plano / Serviço Vendido <span className="text-red-600">*</span>
+                  Produto <span className="text-red-600">*</span>
                 </label>
                 <div className="relative">
                   <input
                     type="text"
                     list="services-datalist"
                     required
-                    placeholder="Ex: Fibra 500 Mega, Fibra 750 Mega, Fibra 1 Giga..."
+                    placeholder="Ex: Fibra 600 ou 500 mega, Fibra 1GB, TV BOX..."
                     value={formService}
                     onChange={(e) => setFormService(e.target.value)}
                     className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none text-slate-900 font-bold text-xs"
                   />
-                  <Wifi className="w-4 h-4 text-red-500 absolute left-3 top-3" />
+                  <Wifi className="w-4 h-4 text-red-500 absolute left-3 top-3 pointer-events-none" />
                   <datalist id="services-datalist">
-                    {COMMON_RESIDENTIAL_SERVICES.map((s) => (
+                    {RESIDENTIAL_PRODUCTS.map((s) => (
                       <option key={s} value={s} />
                     ))}
                   </datalist>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                  <span className="text-[10px] text-slate-500 font-semibold">Atalhos rápidos:</span>
-                  {['Fibra 350 Mega', 'Fibra 500 Mega', 'Fibra 750 Mega', 'Fibra 1 Giga'].map((s) => (
+                  <span className="text-[10px] text-slate-500 font-semibold">Opções de produtos:</span>
+                  {RESIDENTIAL_PRODUCTS.map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -1336,26 +1501,26 @@ export const ResidentialTrackingView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Triplo Seletor: Solar, M-Play, 2º Ponto Virtua */}
+              {/* Triplo Seletor: 6. Venda Solar, 8. MPLAY?, 2º Ponto Virtua */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
                 <span className="text-[11px] font-extrabold uppercase text-slate-700 block tracking-wider">
                   Serviços Adicionais & Parcerias
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Solar */}
+                  {/* 6. Venda Solar */}
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 mb-2">
                       <Sun className="w-4 h-4 text-amber-500" />
-                      Solar:
+                      Venda Solar: <span className="text-red-600">*</span>
                     </label>
                     <div className="grid grid-cols-2 gap-1.5">
-                      {(['SIM', 'NÃO'] as YesNoOption[]).map((opt) => (
+                      {SOLAR_OPTIONS.map((opt) => (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => setFormSolar(opt)}
                           className={`py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                            formSolar === opt
+                            formSolar.toLowerCase() === opt.toLowerCase()
                               ? 'bg-amber-600 text-white shadow-xs'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                           }`}
@@ -1366,19 +1531,19 @@ export const ResidentialTrackingView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* M-Play */}
+                  {/* 8. MPLAY? */}
                   <div className="bg-white p-3 rounded-xl border border-slate-200">
                     <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 mb-2">
                       <Smartphone className="w-4 h-4 text-blue-500" />
-                      M-Play:
+                      MPLAY? <span className="text-red-600">*</span>
                     </label>
                     <div className="grid grid-cols-2 gap-1.5">
-                      {(['SIM', 'NÃO'] as YesNoOption[]).map((opt) => (
+                      {MPLAY_OPTIONS.map((opt) => (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => setFormMplay(opt)}
-                          className={`py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                          className={`py-1.5 px-1 rounded-lg text-[11px] font-black transition-all cursor-pointer whitespace-nowrap text-center ${
                             formMplay === opt
                               ? 'bg-blue-600 text-white shadow-xs'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -1397,13 +1562,13 @@ export const ResidentialTrackingView: React.FC = () => {
                       2º Ponto Virtua:
                     </label>
                     <div className="grid grid-cols-2 gap-1.5">
-                      {(['SIM', 'NÃO'] as YesNoOption[]).map((opt) => (
+                      {(['Sim', 'Não']).map((opt) => (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => setFormSecondPointVirtua(opt)}
                           className={`py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
-                            formSecondPointVirtua === opt
+                            formSecondPointVirtua.toLowerCase() === opt.toLowerCase()
                               ? 'bg-purple-600 text-white shadow-xs'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                           }`}
@@ -1463,33 +1628,18 @@ export const ResidentialTrackingView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Vendedor & Observações (Opcionais) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Vendedor Responsável (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Nome do consultor"
-                    value={formSellerName}
-                    onChange={(e) => setFormSellerName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 outline-none text-slate-900 text-xs font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                    Observações / Motivo (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Reagendado, tubulação, etc."
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 outline-none text-slate-900 text-xs font-semibold"
-                  />
-                </div>
+              {/* Observações / Motivo (Opcional) */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Observações / Motivo (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Reagendado, tubulação, etc."
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 outline-none text-slate-900 text-xs font-semibold"
+                />
               </div>
 
               {/* Form Actions Footer */}
@@ -1576,18 +1726,27 @@ export const ResidentialTrackingView: React.FC = () => {
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
+                disabled={isDeleting}
                 onClick={() => setDeleteCandidate(null)}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 text-xs transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 text-xs transition-colors cursor-pointer disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 id="btn-confirm-delete-residential"
+                disabled={isDeleting}
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
-                Sim, Excluir Venda
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Excluindo...</span>
+                  </>
+                ) : (
+                  <span>Sim, Excluir Venda</span>
+                )}
               </button>
             </div>
           </div>

@@ -125,11 +125,10 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (res.success && res.data) {
         const current = databaseRef.current;
         if (!areStoreDatabasesEqual(current, res.data)) {
-          // Merge remote with current memory data to preserve any local changes
-          const merged = mergeStoreDatabases(current, res.data);
-          setDatabase(merged);
+          // Server is the single source of truth: apply server data directly
+          setDatabase(res.data);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(res.data));
           } catch {}
         }
         setSyncStatus('synced');
@@ -172,27 +171,10 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch {}
 
         if (remoteRes.success && remoteRes.data) {
-          // Both remote and local exist: merge them
-          const merged = mergeStoreDatabases(localCached, remoteRes.data);
-
-          // Check if local had any days/data not yet saved to remote
-          const remoteDaysCount = Object.values(remoteRes.data.months || {}).reduce(
-            (acc, m: any) => acc + Object.keys(m.days || {}).length,
-            0
-          );
-          const mergedDaysCount = Object.values(merged.months || {}).reduce(
-            (acc, m: any) => acc + Object.keys(m.days || {}).length,
-            0
-          );
-
-          if (mergedDaysCount > remoteDaysCount) {
-            // Push merged database to remote server so all other devices get it immediately!
-            await pushRemoteStoreDatabase(merged);
-          }
-
-          setDatabase(merged);
+          // Server is the single source of truth: adopt server data directly
+          setDatabase(remoteRes.data);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteRes.data));
           } catch {}
           setSyncStatus('synced');
           setLastSyncTimeString(remoteRes.updatedAt);

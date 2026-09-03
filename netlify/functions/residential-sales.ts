@@ -6,6 +6,7 @@ import path from "path";
 // Fallback in-memory store if Blobs context is unavailable
 let inMemorySales: any[] = [];
 const TMP_SALES_FILE = path.join("/tmp", "claro-residential-sales.json");
+const TMP_DELETED_FILE = path.join("/tmp", "claro-residential-deleted-ids.json");
 
 const SEED_SALES = [
   {
@@ -159,50 +160,85 @@ async function getStoreInstance(event?: any) {
   }
 }
 
+async function loadDeletedIds(store: any): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (store) {
+    try {
+      const raw = await store.get("residential-deleted-ids", { type: "json" });
+      if (Array.isArray(raw)) {
+        raw.forEach((id: string) => ids.add(String(id)));
+      }
+    } catch (e) {
+      console.warn("Netlify Blobs deleted IDs read error:", e);
+    }
+  }
+  try {
+    if (fs.existsSync(TMP_DELETED_FILE)) {
+      const raw = fs.readFileSync(TMP_DELETED_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((id: string) => ids.add(String(id)));
+      }
+    }
+  } catch (err) {
+    console.warn("Error reading tmp deleted IDs file:", err);
+  }
+  return ids;
+}
+
+async function persistDeletedId(store: any, id: string): Promise<void> {
+  if (!id) return;
+  const deletedSet = await loadDeletedIds(store);
+  deletedSet.add(String(id));
+  const list = Array.from(deletedSet);
+  if (store) {
+    try {
+      await store.setJSON("residential-deleted-ids", list);
+    } catch (e) {
+      console.warn("Netlify Blobs deleted IDs write error:", e);
+    }
+  }
+  try {
+    fs.writeFileSync(TMP_DELETED_FILE, JSON.stringify(list), "utf-8");
+  } catch {}
+}
+
 async function loadCurrentSales(store: any): Promise<any[]> {
+  const deletedIds = await loadDeletedIds(store);
+
   if (store) {
     try {
       const raw = await store.get("residential-sales", { type: "json" });
-      if (raw && Array.isArray(raw) && raw.length > 0) {
-        return deduplicateList(raw);
+      if (raw && Array.isArray(raw)) {
+        // Return existing array filtered by permanently deleted IDs. NEVER auto re-seed if empty!
+        return deduplicateList(raw).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
       }
     } catch (e) {
       console.warn("Netlify Blobs read error:", e);
     }
   }
-  if (inMemorySales && inMemorySales.length > 0) {
-    return deduplicateList(inMemorySales);
+  if (inMemorySales && Array.isArray(inMemorySales)) {
+    return deduplicateList(inMemorySales).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
   }
   try {
     if (fs.existsSync(TMP_SALES_FILE)) {
       const raw = fs.readFileSync(TMP_SALES_FILE, "utf-8");
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        inMemorySales = deduplicateList(parsed);
+      if (Array.isArray(parsed)) {
+        inMemorySales = deduplicateList(parsed).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
         return inMemorySales;
       }
     }
   } catch (err) {
     console.warn("Error reading tmp sales file:", err);
   }
-  // Initialize with seed data
-  const initial = deduplicateList(SEED_SALES);
-  inMemorySales = initial;
-  if (store) {
-    try {
-      await store.setJSON("residential-sales", initial);
-    } catch (e) {
-      console.warn("Netlify Blobs seed write error:", e);
-    }
-  }
-  try {
-    fs.writeFileSync(TMP_SALES_FILE, JSON.stringify(initial), "utf-8");
-  } catch {}
-  return initial;
+  // Return empty list if no records exist. NEVER re-create seed mock records after deletion!
+  return [];
 }
 
 async function saveCurrentSales(store: any, sales: any[]): Promise<any[]> {
-  const clean = deduplicateList(sales);
+  const deletedIds = await loadDeletedIds(store);
+  const clean = deduplicateList(sales).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
   inMemorySales = clean;
   try {
     fs.writeFileSync(TMP_SALES_FILE, JSON.stringify(clean), "utf-8");
@@ -379,6 +415,10 @@ export const handler: Handler = async (event) => {
         };
       }
 
+      // 1. Permanently record deletion tombstone in Netlify Blobs & local file
+      await persistDeletedId(store, idToDelete);
+
+      // 2. Load current sales, exclude the deleted ID, and save
       const currentSales = await loadCurrentSales(store);
       const filtered = currentSales.filter((s: any) => s.id !== idToDelete);
       const saved = await saveCurrentSales(store, filtered);

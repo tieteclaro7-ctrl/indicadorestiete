@@ -1,5 +1,9 @@
 import { ResidentialSale, StoreDatabase } from '../types';
-import { INITIAL_RESIDENTIAL_SALES, RESIDENTIAL_STORAGE_KEY } from './residentialStorage';
+import {
+  RESIDENTIAL_STORAGE_KEY,
+  getDeletedResidentialIds,
+  recordDeletedResidentialId,
+} from './residentialStorage';
 
 export function formatCurrentTime(): string {
   const d = new Date();
@@ -26,14 +30,17 @@ const RESIDENTIAL_ENDPOINTS = [
   '/.netlify/functions/residential',
 ];
 
-// Helper: Ensure every record has a unique ID and remove duplicates
+// Helper: Ensure every record has a unique ID, remove duplicates, and filter out deleted IDs
 export function deduplicateSales(sales: ResidentialSale[]): ResidentialSale[] {
   if (!Array.isArray(sales)) return [];
+  const deletedIds = getDeletedResidentialIds();
   const map = new Map<string, ResidentialSale>();
 
   for (const item of sales) {
-    if (!item) continue;
-    const id = item.id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    if (!item || !item.id) continue;
+    const id = String(item.id);
+    if (deletedIds.has(id)) continue; // Never resurrect permanently deleted sales
+
     const existing = map.get(id);
     if (!existing) {
       map.set(id, { ...item, id });
@@ -75,7 +82,7 @@ export async function fetchRemoteResidentialSales(): Promise<{
         const data = await response.json();
         if (data && data.success && Array.isArray(data.sales)) {
           const cleanSales = deduplicateSales(data.sales);
-          // Update local cache strictly as an offline fallback
+          // Update local cache strictly as an offline mirror of authoritative server data
           if (typeof window !== 'undefined') {
             try {
               localStorage.setItem(RESIDENTIAL_STORAGE_KEY, JSON.stringify(cleanSales));
@@ -96,19 +103,19 @@ export async function fetchRemoteResidentialSales(): Promise<{
     }
   }
 
-  // Network failed on all endpoints: Fallback to LocalStorage cache
+  // Network failed on all endpoints: Fallback to LocalStorage cache only
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(RESIDENTIAL_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return {
             success: false,
             sales: deduplicateSales(parsed),
             source: 'local',
             updatedTime: getLastSyncTime(),
-            error: 'Servidor indisponível. Carregando dados locais temporários.',
+            error: 'Servidor indisponível. Exibindo cache local temporário.',
           };
         }
       }
@@ -117,7 +124,7 @@ export async function fetchRemoteResidentialSales(): Promise<{
 
   return {
     success: false,
-    sales: INITIAL_RESIDENTIAL_SALES,
+    sales: [],
     source: 'local',
     updatedTime: getLastSyncTime(),
     error: 'Sem conexão com o servidor compartilhado.',
@@ -233,6 +240,23 @@ export async function deleteRemoteResidentialSale(id: string): Promise<{
   updatedTime?: string;
   error?: string;
 }> {
+  // 1. Immediately record deletion in local tombstone
+  recordDeletedResidentialId(id);
+
+  // 2. Purge from local storage cache immediately
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(RESIDENTIAL_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((s: any) => s && String(s.id) !== String(id));
+          localStorage.setItem(RESIDENTIAL_STORAGE_KEY, JSON.stringify(filtered));
+        }
+      }
+    } catch {}
+  }
+
   for (const endpoint of RESIDENTIAL_ENDPOINTS) {
     try {
       const url = `${endpoint}?id=${encodeURIComponent(id)}`;

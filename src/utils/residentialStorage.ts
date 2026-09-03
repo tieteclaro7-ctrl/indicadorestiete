@@ -1,23 +1,110 @@
 import { ResidentialSale, ResidentialFilterState, ResidentialSummary } from '../types';
 
 export const RESIDENTIAL_STORAGE_KEY = 'claro_residential_sales_tracking_v1';
+export const RESIDENTIAL_DELETED_KEY = 'claro_residential_deleted_ids';
 
-export const COMMON_RESIDENTIAL_SERVICES = [
-  'Fibra 350 Mega',
-  'Fibra 500 Mega',
-  'Fibra 750 Mega',
-  'Fibra 1 Giga',
-  'Claro TV+ Fibra 500 Mega',
-  'Claro TV+ Fibra 750 Mega',
-  'Claro TV+ Soundbox 1 Giga',
-  'Combo Multi Fibra 500 Mega',
+export function getDeletedResidentialIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(RESIDENTIAL_DELETED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.map((id) => String(id)));
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+export function recordDeletedResidentialId(id: string): void {
+  if (!id || typeof window === 'undefined') return;
+  try {
+    const set = getDeletedResidentialIds();
+    set.add(String(id));
+    localStorage.setItem(RESIDENTIAL_DELETED_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export const RESIDENTIAL_SELLERS = [
+  'Diego',
+  'Bruno',
+  'Giulia',
+  'João',
+  'Glaucia',
+  'Matheus',
+  'Erick',
+  'Patrick',
+  'Alex',
+  'Guilherme',
+  'Italo',
+] as const;
+
+export const RESIDENTIAL_PRODUCTS = [
+  'Fibra 350 mega',
+  'Fibra 600 ou 500 mega',
+  'Fibra 1GB',
+  'TV BOX',
+  'Sound BOX',
+  'Fibra + TV',
 ];
 
+export const COMMON_RESIDENTIAL_SERVICES = RESIDENTIAL_PRODUCTS;
+
 export const PERIOD_OPTIONS = [
-  '8:00 às 12:00',
-  '12:00 às 15:00',
-  '15:00 às 18:00',
+  '08:00-12:00',
+  '12:00-15:00',
+  '15:00-18:00',
 ] as const;
+
+export const MPLAY_OPTIONS = [
+  'Sim Fibra',
+  'Sim TV',
+  'Sim Ambas',
+  'Não',
+] as const;
+
+export const SOLAR_OPTIONS = [
+  'Sim',
+  'Não',
+] as const;
+
+export function formatDateInput(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+export function isoToBrDate(iso: string): string {
+  if (!iso) return '';
+  if (iso.includes('/')) return iso;
+  const parts = iso.split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts;
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  }
+  return iso;
+}
+
+export function brDateToIso(br: string): string {
+  if (!br) return '';
+  if (br.includes('-')) return br;
+  const parts = br.split('/');
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  return br;
+}
+
+export function getTodayBrDate(): string {
+  const d = new Date();
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
 
 // Seed initial realistic data for first use
 export const INITIAL_RESIDENTIAL_SALES: ResidentialSale[] = [
@@ -141,23 +228,23 @@ export function getNextResidentialStatus(current: string): 'PENDENTE' | 'CONECTA
   return 'PENDENTE';
 }
 
-// Get all sales from localStorage (strictly isolated)
+// Get all sales from localStorage (strictly isolated cache)
 export function getResidentialSales(): ResidentialSale[] {
-  if (typeof window === 'undefined') return INITIAL_RESIDENTIAL_SALES;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(RESIDENTIAL_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(RESIDENTIAL_STORAGE_KEY, JSON.stringify(INITIAL_RESIDENTIAL_SALES));
-      return INITIAL_RESIDENTIAL_SALES;
+      return [];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed;
+      const deletedIds = getDeletedResidentialIds();
+      return parsed.filter((item: any) => item && item.id && !deletedIds.has(String(item.id)));
     }
-    return INITIAL_RESIDENTIAL_SALES;
+    return [];
   } catch (err) {
     console.error('Error loading residential sales from localStorage:', err);
-    return INITIAL_RESIDENTIAL_SALES;
+    return [];
   }
 }
 
@@ -187,9 +274,14 @@ export function calculateResidentialSummary(sales: ResidentialSale[]): Residenti
     else if (s.status === 'CONECTADO') connected++;
     else if (s.status === 'DESCONECTADO') disconnected++;
 
-    if (s.solar === 'SIM') solar++;
-    if (s.mplay === 'SIM') mplay++;
-    if (s.secondPointVirtua === 'SIM') secondPoint++;
+    const sol = String(s.solar || '').trim().toLowerCase();
+    if (sol === 'sim') solar++;
+
+    const mp = String(s.mplay || '').trim().toLowerCase();
+    if (mp && mp !== 'não' && mp !== 'nao') mplay++;
+
+    const sp = String(s.secondPointVirtua || '').trim().toLowerCase();
+    if (sp === 'sim') secondPoint++;
   });
 
   return {
@@ -223,29 +315,56 @@ export function filterResidentialSales(
       }
     }
 
-    // Installation Date filter
-    if (filters.installationDate && item.installationDate !== filters.installationDate) {
-      return false;
+    // Installation Date filter (supports DD/MM/AAAA or YYYY-MM-DD comparison)
+    if (filters.installationDate) {
+      const targetIso = filters.installationDate.includes('/')
+        ? brDateToIso(filters.installationDate)
+        : filters.installationDate;
+      const itemIso = item.installationDate.includes('/')
+        ? brDateToIso(item.installationDate)
+        : item.installationDate;
+      if (targetIso !== itemIso) {
+        return false;
+      }
     }
 
     // Period filter
-    if (filters.period && filters.period !== 'all' && item.period !== filters.period) {
-      return false;
+    if (filters.period && filters.period !== 'all') {
+      const pNorm = (p: string) => p.replace(/\s+/g, '').replace('às', '-');
+      if (pNorm(item.period) !== pNorm(filters.period) && item.period !== filters.period) {
+        return false;
+      }
     }
 
     // Solar filter
-    if (filters.solar && filters.solar !== 'all' && item.solar !== filters.solar) {
-      return false;
+    if (filters.solar && filters.solar !== 'all') {
+      const fSol = filters.solar.toLowerCase();
+      const iSol = String(item.solar || '').toLowerCase();
+      if (fSol !== iSol) {
+        return false;
+      }
     }
 
     // M-Play filter
-    if (filters.mplay && filters.mplay !== 'all' && item.mplay !== filters.mplay) {
-      return false;
+    if (filters.mplay && filters.mplay !== 'all') {
+      const fMp = filters.mplay.toLowerCase();
+      const iMp = String(item.mplay || '').toLowerCase();
+      if (fMp === 'sim') {
+        if (iMp === 'não' || iMp === 'nao' || !iMp) return false;
+      } else if (fMp === 'não' || fMp === 'nao') {
+        if (iMp !== 'não' && iMp !== 'nao') return false;
+      } else if (fMp !== iMp) {
+        return false;
+      }
     }
 
     // 2º Ponto Virtua filter
-    if (filters.secondPointVirtua && filters.secondPointVirtua !== 'all' && item.secondPointVirtua !== filters.secondPointVirtua) {
-      return false;
+    if (filters.secondPointVirtua && filters.secondPointVirtua !== 'all') {
+      const fSp = filters.secondPointVirtua.toLowerCase();
+      const iSp = String(item.secondPointVirtua || '').toLowerCase();
+      if (fSp !== iSp) {
+        return false;
+      }
     }
 
     // Service filter (case-insensitive substring)

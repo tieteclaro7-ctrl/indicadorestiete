@@ -71,22 +71,31 @@ export type ViewTab =
   | 'radio-mix'
   | 'settings';
 
-export type ResidentialPeriod = '8:00 às 12:00' | '12:00 às 15:00' | '15:00 às 18:00';
-export type YesNoOption = 'SIM' | 'NÃO';
+export type ResidentialPeriod =
+  | '08:00-12:00'
+  | '12:00-15:00'
+  | '15:00-18:00'
+  | '8:00 às 12:00'
+  | '12:00 às 15:00'
+  | '15:00 às 18:00'
+  | string;
+
+export type YesNoOption = 'SIM' | 'NÃO' | 'Sim' | 'Não';
 export type ResidentialStatus = 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO';
 
 export interface ResidentialSale {
   id: string;
   contract: string; // Formato de referência: ____/____ (digitação livre)
-  installationDate: string; // YYYY-MM-DD
-  period: ResidentialPeriod; // Exatamente: '8:00 às 12:00' | '12:00 às 15:00' | '15:00 às 18:00'
-  solar: YesNoOption; // 'SIM' | 'NÃO'
-  mplay: YesNoOption; // 'SIM' | 'NÃO'
-  service: string; // Ex: 'Fibra 350 Mega', 'Fibra 500 Mega', 'Fibra 750 Mega', 'Fibra 1 Giga'
-  secondPointVirtua: YesNoOption; // 'SIM' | 'NÃO'
+  saleDate?: string; // Data da venda DD/MM/AAAA
+  installationDate: string; // Data de instalação DD/MM/AAAA ou YYYY-MM-DD
+  period: ResidentialPeriod; // Exatamente: '08:00-12:00' | '12:00-15:00' | '15:00-18:00'
+  solar: YesNoOption | string; // 'Sim' | 'Não'
+  mplay: string; // Exatamente: 'Sim Fibra' | 'Sim TV' | 'Sim Ambas' | 'Não'
+  service: string; // Ex: 'Fibra 350 mega', 'Fibra 600 ou 500 mega', 'Fibra 1GB', 'TV BOX', 'Sound BOX', 'Fibra + TV' (ou digitação livre)
+  secondPointVirtua: YesNoOption | string; // 'SIM' | 'NÃO' | 'Sim' | 'Não'
   cpf: string; // 000.000.000-00
   status: ResidentialStatus; // 'PENDENTE' | 'CONECTADO' | 'DESCONECTADO'
-  sellerName?: string;
+  sellerName?: string; // Vendedor obrigatório no formulário
   notes?: string;
   createdAt: string;
   updatedAt: string;

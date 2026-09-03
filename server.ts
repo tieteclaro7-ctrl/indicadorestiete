@@ -38,6 +38,7 @@ app.get("/api/health", (_req, res) => {
 // ---------------------------------------------------------------------------
 const DATA_DIR = path.join(process.cwd(), "data");
 const RESIDENTIAL_FILE = path.join(DATA_DIR, "residential-sales.json");
+const RESIDENTIAL_DELETED_FILE = path.join(DATA_DIR, "residential-deleted-ids.json");
 const STORE_DB_FILE = path.join(DATA_DIR, "store-db.json");
 
 if (!fs.existsSync(DATA_DIR)) {
@@ -172,25 +173,56 @@ let sharedResidentialSales: any[] = [];
 let sharedStoreDb: any = null;
 let lastSyncTimestamp: string = new Date().toISOString();
 
+function loadDeletedSalesIds(): Set<string> {
+  try {
+    if (fs.existsSync(RESIDENTIAL_DELETED_FILE)) {
+      const raw = fs.readFileSync(RESIDENTIAL_DELETED_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.map((id) => String(id)));
+      }
+    }
+  } catch (err) {
+    console.warn("Error reading residential deleted IDs file:", err);
+  }
+  return new Set<string>();
+}
+
+function persistDeletedSaleId(id: string) {
+  if (!id) return;
+  const deletedSet = loadDeletedSalesIds();
+  deletedSet.add(String(id));
+  try {
+    fs.writeFileSync(
+      RESIDENTIAL_DELETED_FILE,
+      JSON.stringify(Array.from(deletedSet), null, 2),
+      "utf-8"
+    );
+  } catch (err) {
+    console.warn("Error saving residential deleted IDs file:", err);
+  }
+}
+
 function loadDiskResidentialSales(): any[] {
+  const deletedIds = loadDeletedSalesIds();
   try {
     if (fs.existsSync(RESIDENTIAL_FILE)) {
       const raw = fs.readFileSync(RESIDENTIAL_FILE, "utf-8");
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return deduplicateList(parsed);
+      if (Array.isArray(parsed)) {
+        // Return file contents filtered by permanently deleted IDs. NEVER auto re-seed if empty!
+        return deduplicateList(parsed).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
       }
     }
   } catch (err) {
     console.warn("Error reading residential sales file:", err);
   }
-  // Initialize with seed sales if empty
-  saveDiskResidentialSales(SEED_RESIDENTIAL_SALES);
-  return deduplicateList(SEED_RESIDENTIAL_SALES);
+  return [];
 }
 
 function saveDiskResidentialSales(sales: any[]) {
-  const clean = deduplicateList(sales);
+  const deletedIds = loadDeletedSalesIds();
+  const clean = deduplicateList(sales).filter((s: any) => s && s.id && !deletedIds.has(String(s.id)));
   sharedResidentialSales = clean;
   lastSyncTimestamp = new Date().toISOString();
   try {
@@ -349,6 +381,9 @@ app.delete(RESIDENTIAL_ROUTES, (req, res) => {
       error: "ID obrigatório para exclusão da venda residencial.",
     });
   }
+
+  // Permanently record deletion in deleted IDs store
+  persistDeletedSaleId(idToDelete);
 
   const currentSales = loadDiskResidentialSales();
   const filtered = currentSales.filter((s: any) => s.id !== idToDelete);
