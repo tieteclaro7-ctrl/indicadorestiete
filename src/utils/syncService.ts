@@ -327,43 +327,257 @@ export async function pushRemoteResidentialSales(sales: ResidentialSale[]): Prom
 // ---------------------------------------------------------------------------
 // Store Database Sync (Daily sales, goals, sellers)
 // ---------------------------------------------------------------------------
-export async function fetchRemoteStoreDatabase(): Promise<StoreDatabase | null> {
-  const endpoints = ['/api/store-db', '/.netlify/functions/database'];
+const STORE_DB_ENDPOINTS = [
+  '/.netlify/functions/database',
+  '/api/store-db',
+  '/api/database',
+];
 
-  for (const endpoint of endpoints) {
+export interface RemoteDbFetchResult {
+  success: boolean;
+  data: StoreDatabase | null;
+  source: 'remote' | 'local';
+  updatedAt: string;
+  error?: string;
+}
+
+export interface RemoteDbPushResult {
+  success: boolean;
+  updatedAt: string;
+  error?: string;
+}
+
+// Helper to safely merge local and remote databases without losing any entries
+export function mergeStoreDatabases(
+  local: StoreDatabase | null | undefined,
+  remote: StoreDatabase | null | undefined
+): StoreDatabase {
+  if (!local && remote) return remote;
+  if (local && !remote) return local;
+  if (!local && !remote) {
+    const today = new Date().toISOString().substring(0, 10);
+    return {
+      version: 2,
+      storeName: 'Claro — Shopping Tietê Plaza',
+      sellers: [],
+      months: {},
+      lastSelectedDate: today,
+    };
+  }
+
+  const baseLocal = local!;
+  const baseRemote = remote!;
+
+  // Merge sellers: keep unique sellers, prefer remote name if available, preserve active local sellers
+  const sellerMap = new Map<string, any>();
+  (baseLocal.sellers || []).forEach((s) => {
+    if (s && s.id) sellerMap.set(s.id, { ...s });
+  });
+  (baseRemote.sellers || []).forEach((s) => {
+    if (s && s.id) {
+      const existing = sellerMap.get(s.id);
+      sellerMap.set(s.id, {
+        id: s.id,
+        name: s.name || existing?.name || '',
+        active: s.active !== undefined ? s.active : existing?.active ?? true,
+      });
+    }
+  });
+
+  const mergedSellers = Array.from(sellerMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+  );
+
+  // Merge Store Goals
+  const mergedStoreGoals: Record<string, number> = {
+    ...(baseLocal.storeGoals || {}),
+    ...(baseRemote.storeGoals || {}),
+  };
+
+  // Merge Monthly Goals
+  const mergedMonthlyGoals: Record<string, Record<string, number>> = {};
+  const allMonthlyGoalKeys = new Set([
+    ...Object.keys(baseLocal.monthlyGoals || {}),
+    ...Object.keys(baseRemote.monthlyGoals || {}),
+  ]);
+  allMonthlyGoalKeys.forEach((mKey) => {
+    mergedMonthlyGoals[mKey] = {
+      ...(baseLocal.monthlyGoals?.[mKey] || {}),
+      ...(baseRemote.monthlyGoals?.[mKey] || {}),
+    };
+  });
+
+  // Merge Months & Daily Entries
+  const mergedMonths: Record<string, any> = {};
+  const allMonthKeys = new Set([
+    ...Object.keys(baseLocal.months || {}),
+    ...Object.keys(baseRemote.months || {}),
+  ]);
+
+  allMonthKeys.forEach((mKey) => {
+    const localMonth = baseLocal.months?.[mKey];
+    const remoteMonth = baseRemote.months?.[mKey];
+
+    if (localMonth && !remoteMonth) {
+      mergedMonths[mKey] = localMonth;
+      return;
+    }
+    if (!localMonth && remoteMonth) {
+      mergedMonths[mKey] = remoteMonth;
+      return;
+    }
+
+    // Both exist: merge days
+    const mergedDays: Record<string, any> = {};
+    const allDayKeys = new Set([
+      ...Object.keys(localMonth.days || {}),
+      ...Object.keys(remoteMonth.days || {}),
+    ]);
+
+    allDayKeys.forEach((dKey) => {
+      const localDay = localMonth.days?.[dKey];
+      const remoteDay = remoteMonth.days?.[dKey];
+
+      if (localDay && !remoteDay) {
+        mergedDays[dKey] = localDay;
+        return;
+      }
+      if (!localDay && remoteDay) {
+        mergedDays[dKey] = remoteDay;
+        return;
+      }
+
+      // Both have entries for this date: keep the one with values or newer updatedAt
+      const localHasValues = Object.keys(localDay.values || {}).some(
+        (ind) => Object.values(localDay.values[ind] || {}).some((v) => Number(v) > 0)
+      );
+      const remoteHasValues = Object.keys(remoteDay.values || {}).some(
+        (ind) => Object.values(remoteDay.values[ind] || {}).some((v) => Number(v) > 0)
+      );
+
+      if (localHasValues && !remoteHasValues) {
+        mergedDays[dKey] = localDay;
+        return;
+      }
+      if (!localHasValues && remoteHasValues) {
+        mergedDays[dKey] = remoteDay;
+        return;
+      }
+
+      const tLocal = new Date(localDay.updatedAt || 0).getTime();
+      const tRemote = new Date(remoteDay.updatedAt || 0).getTime();
+
+      if (tLocal > tRemote) {
+        mergedDays[dKey] = localDay;
+      } else {
+        mergedDays[dKey] = remoteDay;
+      }
+    });
+
+    mergedMonths[mKey] = {
+      monthKey: mKey,
+      days: mergedDays,
+      goals: {
+        ...(localMonth.goals || {}),
+        ...(remoteMonth.goals || {}),
+      },
+      storeGoal: remoteMonth.storeGoal ?? localMonth.storeGoal,
+    };
+  });
+
+  return {
+    version: Math.max(baseLocal.version || 2, baseRemote.version || 2),
+    storeName: baseRemote.storeName || baseLocal.storeName || 'Claro — Shopping Tietê Plaza',
+    sellers: mergedSellers,
+    months: mergedMonths,
+    storeGoals: mergedStoreGoals,
+    monthlyGoals: mergedMonthlyGoals,
+    lastSelectedDate: baseRemote.lastSelectedDate || baseLocal.lastSelectedDate || new Date().toISOString().substring(0, 10),
+  };
+}
+
+// Helper to quickly test if two StoreDatabase states are identical
+export function areStoreDatabasesEqual(
+  a: StoreDatabase | null | undefined,
+  b: StoreDatabase | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchRemoteStoreDatabase(): Promise<RemoteDbFetchResult> {
+  for (const endpoint of STORE_DB_ENDPOINTS) {
     try {
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
 
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
         const result = await response.json();
-        if (result && result.data && result.data.months) {
-          updateLastSyncTime();
-          return result.data;
+        if (result && result.success && result.data && typeof result.data === 'object') {
+          const time = formatCurrentTime();
+          updateLastSyncTime(time);
+          return {
+            success: true,
+            data: result.data,
+            source: 'remote',
+            updatedAt: time,
+          };
         }
       }
-    } catch {}
+    } catch {
+      // Try next endpoint
+    }
   }
-  return null;
+
+  return {
+    success: false,
+    data: null,
+    source: 'local',
+    updatedAt: getLastSyncTime(),
+    error: 'Não foi possível conectar ao servidor compartilhado.',
+  };
 }
 
-export async function pushRemoteStoreDatabase(database: StoreDatabase): Promise<boolean> {
-  updateLastSyncTime();
-  const endpoints = ['/api/store-db', '/.netlify/functions/database'];
+export async function pushRemoteStoreDatabase(database: StoreDatabase): Promise<RemoteDbPushResult> {
+  const payload = { database };
+  const time = formatCurrentTime();
 
-  for (const endpoint of endpoints) {
+  for (const endpoint of STORE_DB_ENDPOINTS) {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ database }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
       });
-      if (response.ok) {
-        return true;
+
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const result = await response.json();
+        if (result && result.success) {
+          updateLastSyncTime(time);
+          return {
+            success: true,
+            updatedAt: time,
+          };
+        }
       }
-    } catch {}
+    } catch {
+      // Try next endpoint
+    }
   }
-  return false;
+
+  return {
+    success: false,
+    updatedAt: time,
+    error: 'Falha ao salvar dados no servidor compartilhado.',
+  };
 }
+

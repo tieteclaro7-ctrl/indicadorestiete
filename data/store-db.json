@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "storeName": "Claro — Shopping Tietê Plaza",
+  "sellers": [
+    {
+      "id": "s_diego",
+      "name": "Diego",
+      "active": true
+    }
+  ],
+  "months": {
+    "2026-09": {
+      "monthKey": "2026-09",
+      "days": {
+        "2026-09-01": {
+          "date": "2026-09-01",
+          "passwordsCount": "42",
+          "values": {
+            "pos_titular_solar": {
+              "s_diego": 1
+            },
+            "pme_03": {
+              "s_giulia": 1,
+              "s_joao": 1
+            }
+          },
+          "updatedAt": "2026-09-01T15:30:00.000Z"
+        }
+      }
+    }
+  },
+  "lastSelectedDate": "2026-09-01"
+}

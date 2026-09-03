@@ -18,6 +18,7 @@ import {
   Volume2,
   VolumeX,
   Maximize2,
+  RefreshCw,
 } from 'lucide-react';
 import { useSales } from '../context/SalesContext';
 import { formatMonthLabel } from '../utils/calculations';
@@ -30,7 +31,16 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = false }) => {
-  const { activeTab, setActiveTab, selectedDate, setSelectedDate, toast } = useSales();
+  const {
+    activeTab,
+    setActiveTab,
+    selectedDate,
+    setSelectedDate,
+    toast,
+    syncStatus,
+    lastSyncTime,
+    manualSync,
+  } = useSales();
   const [radioState, setRadioState] = useState<RadioState>(globalAudioEngine.getState());
 
   useEffect(() => {
@@ -180,6 +190,35 @@ export const Header: React.FC<HeaderProps> = ({ onToggleRadio, isRadioOpen = fal
                 </button>
               )}
             </div>
+
+            {/* Cross-device Cloud Sync Status Badge */}
+            <button
+              type="button"
+              id="header-sync-status-btn"
+              onClick={manualSync}
+              title={`Status de sincronização com o servidor.\nÚltima sincronização: ${lastSyncTime}\nClique para sincronizar agora.`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-800/90 hover:bg-red-900 border border-red-400/50 text-[10px] sm:text-xs font-bold text-white transition-all cursor-pointer shadow-xs"
+            >
+              {syncStatus === 'synced' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="tracking-wide">🟢 SINCRONIZADO</span>
+                  <span className="hidden xl:inline text-red-200 text-[10px] font-normal">({lastSyncTime})</span>
+                </>
+              )}
+              {syncStatus === 'syncing' && (
+                <>
+                  <RefreshCw className="w-3 h-3 text-amber-300 animate-spin shrink-0" />
+                  <span className="tracking-wide text-amber-200">SINCRONIZANDO...</span>
+                </>
+              )}
+              {syncStatus === 'error' && (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-red-300 shrink-0" />
+                  <span className="tracking-wide text-red-100">🔴 SEM CONEXÃO</span>
+                </>
+              )}
+            </button>
 
             {/* Date Input */}
             <div className="flex items-center gap-1.5 bg-red-700/80 px-2.5 sm:px-3 py-1 rounded-lg border border-red-500/50 text-[11px] sm:text-xs font-semibold">

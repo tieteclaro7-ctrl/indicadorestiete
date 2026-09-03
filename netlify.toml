@@ -1,0 +1,32 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/residential-sales*"
+  to = "/.netlify/functions/residential-sales:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/residential*"
+  to = "/.netlify/functions/residential:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/store-db*"
+  to = "/.netlify/functions/database:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/database*"
+  to = "/.netlify/functions/database:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,8 +1,11 @@
 import { Handler } from "@netlify/functions";
-import { getStore } from "@netlify/blobs";
+import { getStore, connectLambda } from "@netlify/blobs";
+import fs from "fs";
+import path from "path";
 
 // Fallback in-memory store if Blobs context is unavailable
 let inMemorySales: any[] = [];
+const TMP_SALES_FILE = path.join("/tmp", "claro-residential-sales.json");
 
 const SEED_SALES = [
   {
@@ -130,8 +133,25 @@ function deduplicateList(list: any[]): any[] {
   return Array.from(map.values());
 }
 
-async function getStoreInstance() {
+async function getStoreInstance(event?: any) {
+  if (event && (event as any).blobs) {
+    try {
+      connectLambda(event);
+    } catch (e) {
+      console.warn("connectLambda error in residential-sales:", e);
+    }
+  }
+
   try {
+    const siteID = process.env.NETLIFY_SITE_ID;
+    const token =
+      process.env.NETLIFY_BLOBS_TOKEN ||
+      process.env.NETLIFY_AUTH_TOKEN ||
+      process.env.NETLIFY_API_TOKEN;
+
+    if (siteID && token) {
+      return getStore({ name: "claro-residential-store", siteID, token, consistency: "strong" });
+    }
     return getStore({ name: "claro-residential-store", consistency: "strong" });
   } catch (err) {
     console.warn("Netlify Blobs getStore error, falling back to memory:", err);
@@ -153,6 +173,18 @@ async function loadCurrentSales(store: any): Promise<any[]> {
   if (inMemorySales && inMemorySales.length > 0) {
     return deduplicateList(inMemorySales);
   }
+  try {
+    if (fs.existsSync(TMP_SALES_FILE)) {
+      const raw = fs.readFileSync(TMP_SALES_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemorySales = deduplicateList(parsed);
+        return inMemorySales;
+      }
+    }
+  } catch (err) {
+    console.warn("Error reading tmp sales file:", err);
+  }
   // Initialize with seed data
   const initial = deduplicateList(SEED_SALES);
   inMemorySales = initial;
@@ -163,12 +195,18 @@ async function loadCurrentSales(store: any): Promise<any[]> {
       console.warn("Netlify Blobs seed write error:", e);
     }
   }
+  try {
+    fs.writeFileSync(TMP_SALES_FILE, JSON.stringify(initial), "utf-8");
+  } catch {}
   return initial;
 }
 
 async function saveCurrentSales(store: any, sales: any[]): Promise<any[]> {
   const clean = deduplicateList(sales);
   inMemorySales = clean;
+  try {
+    fs.writeFileSync(TMP_SALES_FILE, JSON.stringify(clean), "utf-8");
+  } catch {}
   if (store) {
     try {
       await store.setJSON("residential-sales", clean);
@@ -188,7 +226,7 @@ export const handler: Handler = async (event) => {
     };
   }
 
-  const store = await getStoreInstance();
+  const store = await getStoreInstance(event);
 
   try {
     // -------------------------------------------------------------------------

@@ -364,7 +364,7 @@ app.delete(RESIDENTIAL_ROUTES, (req, res) => {
 });
 
 // Store Database sync endpoints
-const STORE_DB_ROUTES = ["/api/store-db", "/.netlify/functions/database"];
+const STORE_DB_ROUTES = ["/api/store-db", "/api/database", "/.netlify/functions/database"];
 
 app.get(STORE_DB_ROUTES, (_req, res) => {
   const db = loadDiskStoreDb() || sharedStoreDb;

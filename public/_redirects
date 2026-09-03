@@ -1,0 +1,5 @@
+/api/residential-sales* /.netlify/functions/residential-sales:splat 200
+/api/residential* /.netlify/functions/residential:splat 200
+/api/store-db* /.netlify/functions/database:splat 200
+/api/database* /.netlify/functions/database:splat 200
+/* /index.html 200

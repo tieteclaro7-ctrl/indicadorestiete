@@ -56,6 +56,7 @@ export interface StoreDatabase {
   monthlyGoals?: Record<string, Record<string, number>>; // monthKey -> indicatorId -> goal
   storeGoals?: Record<string, number>; // monthKey -> Meta da loja (ex: 120)
   lastSelectedDate: string;
+  updatedAt?: string;
 }
 
 export type ViewTab =

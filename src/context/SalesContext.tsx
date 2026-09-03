@@ -1,6 +1,15 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import { createCleanDatabase, DEFAULT_SELLERS, generateDemoSampleDatabase } from '../data/categories';
 import { DailyEntry, FilterState, MonthData, Seller, StoreDatabase, ViewTab } from '../types';
+import {
+  fetchRemoteStoreDatabase,
+  pushRemoteStoreDatabase,
+  mergeStoreDatabases,
+  areStoreDatabasesEqual,
+  formatCurrentTime,
+  getLastSyncTime,
+  updateLastSyncTime,
+} from '../utils/syncService';
 
 interface SalesContextType {
   database: StoreDatabase;
@@ -15,8 +24,8 @@ interface SalesContextType {
   currentDailyEntry: DailyEntry;
   updateCellValue: (indicatorId: string, sellerId: string, value: number) => void;
   updatePasswordsCount: (count: string) => void;
-  saveDailyEntry: (customDate?: string) => void;
-  clearDailyEntry: () => void;
+  saveDailyEntry: (customDate?: string) => Promise<{ success: boolean; error?: string }>;
+  clearDailyEntry: (customDate?: string) => Promise<{ success: boolean; error?: string }>;
   // Sellers management
   updateSellerName: (sellerId: string, newName: string) => void;
   addSeller: (name: string) => void;
@@ -34,6 +43,10 @@ interface SalesContextType {
   exportDatabaseJSON: () => void;
   exportDatabaseCSV: () => void;
   importDatabaseJSON: (jsonStr: string) => boolean;
+  // Cross-device sync status
+  syncStatus: 'synced' | 'syncing' | 'error';
+  lastSyncTime: string;
+  manualSync: () => Promise<void>;
   // Toast notifications
   toast: { message: string; type: 'success' | 'info' | 'error' } | null;
   showToast: (message: string, type?: 'success' | 'info' | 'error') => void;
@@ -50,9 +63,9 @@ export const sortSellersAlphabetically = (sellersList: Seller[]): Seller[] => {
 const SalesContext = createContext<SalesContextType | null>(null);
 
 export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Read local cache initially for immediate render while remote syncs
   const [database, setDatabase] = useState<StoreDatabase>(() => {
     try {
-      // Clear legacy storage versions to prevent cached sample data from persisting
       localStorage.removeItem('claro_tiete_plaza_db_v1');
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
@@ -65,7 +78,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
     } catch (e) {
-      console.error('Falha ao carregar localStorage:', e);
+      console.error('Falha ao ler cache local:', e);
     }
     return createCleanDatabase();
   });
@@ -74,6 +87,15 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [activeTab, setActiveTab] = useState<ViewTab>('dashboard');
   const [selectedDate, setSelectedDate] = useState<string>(database.lastSelectedDate || todayStr);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Synchronization status state
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('syncing');
+  const [lastSyncTimeString, setLastSyncTimeString] = useState<string>(getLastSyncTime() || formatCurrentTime());
+
+  // Refs for tracking in-flight operations without triggering re-renders
+  const isPollingRef = useRef<boolean>(false);
+  const databaseRef = useRef<StoreDatabase>(database);
+  databaseRef.current = database;
 
   const selectedMonth = useMemo(() => selectedDate.substring(0, 7), [selectedDate]);
 
@@ -85,34 +107,134 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     indicatorId: 'all',
   });
 
-  // Keep localStorage updated whenever database changes and push to shared remote storage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(database));
-      // Background push to shared storage so other devices see latest
-      import('../utils/syncService').then(({ pushRemoteStoreDatabase }) => {
-        pushRemoteStoreDatabase(database).catch(() => {});
-      });
-    } catch (e) {
-      console.error('Falha ao persistir no localStorage:', e);
-    }
-  }, [database]);
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((curr) => (curr?.message === message ? null : curr));
+    }, 3500);
+  };
 
-  // Initial remote fetch on startup to sync latest across devices
-  useEffect(() => {
-    import('../utils/syncService').then(({ fetchRemoteStoreDatabase }) => {
-      fetchRemoteStoreDatabase().then((remoteDb) => {
-        if (remoteDb && remoteDb.months && Object.keys(remoteDb.months).length > 0) {
-          setDatabase((prev) => {
-            // Keep local sellers if active or merge
-            return {
-              ...remoteDb,
-              sellers: remoteDb.sellers && remoteDb.sellers.length > 0 ? sortSellersAlphabetically(remoteDb.sellers) : prev.sellers,
-            };
-          });
+  // Dedicated poll function: reads remote shared server data as source of truth
+  const performSync = async (silent = true) => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
+    if (!silent) setSyncStatus('syncing');
+
+    try {
+      const res = await fetchRemoteStoreDatabase();
+      if (res.success && res.data) {
+        const current = databaseRef.current;
+        if (!areStoreDatabasesEqual(current, res.data)) {
+          // Merge remote with current memory data to preserve any local changes
+          const merged = mergeStoreDatabases(current, res.data);
+          setDatabase(merged);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch {}
         }
-      }).catch(() => {});
-    });
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedAt);
+        updateLastSyncTime(res.updatedAt);
+      } else if (!res.success) {
+        setSyncStatus('error');
+      }
+    } catch {
+      setSyncStatus('error');
+    } finally {
+      isPollingRef.current = false;
+    }
+  };
+
+  const manualSync = async () => {
+    showToast('Consultando servidor compartilhado...', 'info');
+    await performSync(false);
+    if (syncStatus === 'synced' || syncStatus === 'syncing') {
+      showToast('Dados sincronizados com o servidor!', 'success');
+    } else {
+      showToast('Não foi possível conectar ao servidor.', 'error');
+    }
+  };
+
+  // Initial startup synchronization and migration
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initialSync() {
+      setSyncStatus('syncing');
+      try {
+        const remoteRes = await fetchRemoteStoreDatabase();
+        if (!isMounted) return;
+
+        let localCached: StoreDatabase | null = null;
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) localCached = JSON.parse(stored);
+        } catch {}
+
+        if (remoteRes.success && remoteRes.data) {
+          // Both remote and local exist: merge them
+          const merged = mergeStoreDatabases(localCached, remoteRes.data);
+
+          // Check if local had any days/data not yet saved to remote
+          const remoteDaysCount = Object.values(remoteRes.data.months || {}).reduce(
+            (acc, m: any) => acc + Object.keys(m.days || {}).length,
+            0
+          );
+          const mergedDaysCount = Object.values(merged.months || {}).reduce(
+            (acc, m: any) => acc + Object.keys(m.days || {}).length,
+            0
+          );
+
+          if (mergedDaysCount > remoteDaysCount) {
+            // Push merged database to remote server so all other devices get it immediately!
+            await pushRemoteStoreDatabase(merged);
+          }
+
+          setDatabase(merged);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch {}
+          setSyncStatus('synced');
+          setLastSyncTimeString(remoteRes.updatedAt);
+        } else if (localCached && Object.keys(localCached.months || {}).length > 0) {
+          // Remote was empty or fresh, but local has data: push to remote
+          await pushRemoteStoreDatabase(localCached);
+          setDatabase(localCached);
+          setSyncStatus('synced');
+        } else if (!remoteRes.success) {
+          setSyncStatus('error');
+        }
+      } catch {
+        if (isMounted) setSyncStatus('error');
+      }
+    }
+
+    initialSync();
+
+    // 5-second polling interval
+    const intervalId = setInterval(() => {
+      performSync(true);
+    }, 5000);
+
+    // Sync immediately when user switches tabs or window gains focus
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        performSync(false);
+      }
+    };
+    const handleFocus = () => {
+      performSync(true);
+    };
+
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Keep filter month in sync when selected date changes
@@ -121,67 +243,55 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setFilters((prev) => ({ ...prev, month: monthKey }));
   }, [selectedDate]);
 
-  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast((curr) => (curr?.message === message ? null : curr));
-    }, 3500);
-  };
-
-  const resetFilters = () => {
-    setFilters({
-      month: selectedMonth,
-      day: 'all',
-      sellerId: 'all',
-      categoryId: 'all',
-      indicatorId: 'all',
-    });
-  };
-
-  // Compute or initialize current daily entry for editing
-  const currentDailyEntry = useMemo<DailyEntry>(() => {
+  // Current daily entry for the selected date
+  const currentDailyEntry = useMemo((): DailyEntry => {
     const monthKey = selectedDate.substring(0, 7);
-    const monthData = database.months[monthKey];
-    if (monthData && monthData.days[selectedDate]) {
-      return monthData.days[selectedDate];
+    const month = database.months[monthKey];
+    if (month && month.days && month.days[selectedDate]) {
+      return month.days[selectedDate];
     }
-    // Return empty entry with structure
     return {
       date: selectedDate,
       passwordsCount: '',
       values: {},
       updatedAt: new Date().toISOString(),
     };
-  }, [database, selectedDate]);
+  }, [database.months, selectedDate]);
 
+  // Update cell value in current session state
   const updateCellValue = (indicatorId: string, sellerId: string, value: number) => {
+    const safeValue = Math.max(0, isNaN(value) ? 0 : value);
     const monthKey = selectedDate.substring(0, 7);
-    const num = Math.max(0, isNaN(value) ? 0 : value);
 
     setDatabase((prev) => {
       const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      const existingEntry = existingMonth.days[selectedDate] || {
+      const existingDay = existingMonth.days[selectedDate] || {
         date: selectedDate,
         passwordsCount: '',
         values: {},
         updatedAt: new Date().toISOString(),
       };
 
-      const updatedValues = {
-        ...existingEntry.values,
-        [indicatorId]: {
-          ...(existingEntry.values[indicatorId] || {}),
-          [sellerId]: num,
-        },
-      };
+      const currentIndicatorValues = existingDay.values[indicatorId] || {};
+      const updatedIndicatorValues = { ...currentIndicatorValues };
 
-      const updatedDays = {
-        ...existingMonth.days,
-        [selectedDate]: {
-          ...existingEntry,
-          values: updatedValues,
-          updatedAt: new Date().toISOString(),
-        },
+      if (safeValue === 0) {
+        delete updatedIndicatorValues[sellerId];
+      } else {
+        updatedIndicatorValues[sellerId] = safeValue;
+      }
+
+      const updatedValues = { ...existingDay.values };
+      if (Object.keys(updatedIndicatorValues).length === 0) {
+        delete updatedValues[indicatorId];
+      } else {
+        updatedValues[indicatorId] = updatedIndicatorValues;
+      }
+
+      const updatedDay: DailyEntry = {
+        ...existingDay,
+        values: updatedValues,
+        updatedAt: new Date().toISOString(),
       };
 
       return {
@@ -191,7 +301,10 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...prev.months,
           [monthKey]: {
             ...existingMonth,
-            days: updatedDays,
+            days: {
+              ...existingMonth.days,
+              [selectedDate]: updatedDay,
+            },
           },
         },
       };
@@ -202,7 +315,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const monthKey = selectedDate.substring(0, 7);
     setDatabase((prev) => {
       const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      const existingEntry = existingMonth.days[selectedDate] || {
+      const existingDay = existingMonth.days[selectedDate] || {
         date: selectedDate,
         passwordsCount: '',
         values: {},
@@ -218,7 +331,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             days: {
               ...existingMonth.days,
               [selectedDate]: {
-                ...existingEntry,
+                ...existingDay,
                 passwordsCount: count,
                 updatedAt: new Date().toISOString(),
               },
@@ -229,194 +342,291 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const saveDailyEntry = (customDate?: string) => {
+  // Save daily entry: sends data to server, awaits confirmation, updates state and local storage
+  const saveDailyEntry = async (customDate?: string): Promise<{ success: boolean; error?: string }> => {
     const targetDate = customDate || selectedDate;
     const monthKey = targetDate.substring(0, 7);
 
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      const existingEntry = existingMonth.days[targetDate] || {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+      showToast('Data inválida para o lançamento.', 'error');
+      return { success: false, error: 'Data inválida.' };
+    }
+
+    setSyncStatus('syncing');
+
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+    const existingEntry = existingMonth.days[targetDate] || {
+      date: targetDate,
+      passwordsCount: '',
+      values: {},
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedEntry: DailyEntry = {
+      ...existingEntry,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newDatabase: StoreDatabase = {
+      ...prev,
+      lastSelectedDate: targetDate,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          days: {
+            ...existingMonth.days,
+            [targetDate]: updatedEntry,
+          },
+        },
+      },
+    };
+
+    // Push to server and await confirmation
+    const pushRes = await pushRemoteStoreDatabase(newDatabase);
+
+    if (pushRes.success) {
+      setDatabase(newDatabase);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newDatabase));
+      } catch {}
+      setSyncStatus('synced');
+      setLastSyncTimeString(pushRes.updatedAt);
+      return { success: true };
+    } else {
+      setSyncStatus('error');
+      return {
+        success: false,
+        error: pushRes.error || 'Falha ao salvar no servidor compartilhado.',
+      };
+    }
+  };
+
+  // Clear daily entry: clears day on server and local
+  const clearDailyEntry = async (customDate?: string): Promise<{ success: boolean; error?: string }> => {
+    const targetDate = customDate || selectedDate;
+    const monthKey = targetDate.substring(0, 7);
+    setSyncStatus('syncing');
+
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+
+    const updatedDays = {
+      ...existingMonth.days,
+      [targetDate]: {
         date: targetDate,
         passwordsCount: '',
         values: {},
         updatedAt: new Date().toISOString(),
-      };
+      },
+    };
 
-      return {
-        ...prev,
-        lastSelectedDate: targetDate,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            days: {
-              ...existingMonth.days,
-              [targetDate]: {
-                ...existingEntry,
-                updatedAt: new Date().toISOString(),
-              },
-            },
-          },
+    const newDatabase: StoreDatabase = {
+      ...prev,
+      lastSelectedDate: targetDate,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          days: updatedDays,
         },
-      };
-    });
+      },
+    };
 
-    showToast(`Lançamento do dia ${targetDate.split('-').reverse().join('/')} salvo com sucesso!`, 'success');
+    const pushRes = await pushRemoteStoreDatabase(newDatabase);
+
+    if (pushRes.success) {
+      setDatabase(newDatabase);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newDatabase));
+      } catch {}
+      setSyncStatus('synced');
+      setLastSyncTimeString(pushRes.updatedAt);
+      showToast(`Todos os lançamentos do dia ${targetDate.split('-').reverse().join('/')} foram zerados e sincronizados!`, 'info');
+      return { success: true };
+    } else {
+      setSyncStatus('error');
+      showToast('Falha ao zerar no servidor compartilhado.', 'error');
+      return { success: false, error: pushRes.error };
+    }
   };
 
-  const clearDailyEntry = (customDate?: string) => {
-    const targetDate = customDate || selectedDate;
-    const monthKey = targetDate.substring(0, 7);
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-
-      const updatedDays = {
-        ...existingMonth.days,
-        [targetDate]: {
-          date: targetDate,
-          passwordsCount: '',
-          values: {},
-          updatedAt: new Date().toISOString(),
-        },
-      };
-
-      return {
-        ...prev,
-        lastSelectedDate: targetDate,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            days: updatedDays,
-          },
-        },
-      };
-    });
-    showToast(`Todos os lançamentos do dia ${targetDate.split('-').reverse().join('/')} foram zerados com sucesso!`, 'info');
-  };
-
+  // Seller management functions with automatic remote synchronization
   const updateSellerName = (sellerId: string, newName: string) => {
     if (!newName.trim()) return;
-    setDatabase((prev) => ({
+    const prev = databaseRef.current;
+    const updated: StoreDatabase = {
       ...prev,
+      updatedAt: new Date().toISOString(),
       sellers: sortSellersAlphabetically(
         prev.sellers.map((s) => (s.id === sellerId ? { ...s, name: newName.trim() } : s))
       ),
-    }));
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast(`Nome do vendedor atualizado para "${newName.trim()}".`, 'info');
   };
 
   const addSeller = (name: string) => {
     if (!name.trim()) return;
     const newId = `s_${Date.now()}`;
-    setDatabase((prev) => ({
+    const prev = databaseRef.current;
+    const updated: StoreDatabase = {
       ...prev,
+      updatedAt: new Date().toISOString(),
       sellers: sortSellersAlphabetically([
         ...prev.sellers,
         { id: newId, name: name.trim(), active: true },
       ]),
-    }));
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast(`Vendedor "${name.trim()}" adicionado à equipe!`, 'success');
   };
 
   const removeSeller = (sellerId: string) => {
-    setDatabase((prev) => ({
+    const prev = databaseRef.current;
+    const updated: StoreDatabase = {
       ...prev,
+      updatedAt: new Date().toISOString(),
       sellers: prev.sellers.filter((s) => s.id !== sellerId),
-    }));
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast('Vendedor removido com sucesso.', 'info');
   };
 
   const toggleSellerActive = (sellerId: string) => {
-    setDatabase((prev) => ({
+    const prev = databaseRef.current;
+    const updated: StoreDatabase = {
       ...prev,
+      updatedAt: new Date().toISOString(),
       sellers: prev.sellers.map((s) => (s.id === sellerId ? { ...s, active: !s.active } : s)),
-    }));
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
   };
 
+  // Goals management functions with automatic remote synchronization
   const updateStoreMonthlyGoal = (monthKey: string, goal: number) => {
     const safeGoal = Math.max(0, isNaN(goal) ? 0 : goal);
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      return {
-        ...prev,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            storeGoal: safeGoal,
-          },
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+
+    const updated: StoreDatabase = {
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          storeGoal: safeGoal,
         },
-        storeGoals: {
-          ...(prev.storeGoals || {}),
-          [monthKey]: safeGoal,
-        },
-      };
-    });
+      },
+      storeGoals: {
+        ...(prev.storeGoals || {}),
+        [monthKey]: safeGoal,
+      },
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast(`Meta da Loja para ${monthKey.split('-').reverse().join('/')} configurada: ${safeGoal} vendas!`, 'success');
   };
 
   const updateStoreGoal = (monthKey: string, indicatorId: string, value: number) => {
     const safeVal = Math.max(0, isNaN(value) ? 0 : value);
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      const currentGoals = { ...(existingMonth.goals || {}) };
-      if (safeVal === 0) {
-        delete currentGoals[indicatorId];
-      } else {
-        currentGoals[indicatorId] = safeVal;
-      }
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+    const currentGoals = { ...(existingMonth.goals || {}) };
+    if (safeVal === 0) {
+      delete currentGoals[indicatorId];
+    } else {
+      currentGoals[indicatorId] = safeVal;
+    }
 
-      return {
-        ...prev,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            goals: currentGoals,
-          },
+    const updated: StoreDatabase = {
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          goals: currentGoals,
         },
-      };
-    });
+      },
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
   };
 
   const updateAllStoreGoals = (monthKey: string, goals: Record<string, number>) => {
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      const cleanGoals: Record<string, number> = {};
-      Object.entries(goals).forEach(([k, v]) => {
-        const num = Math.max(0, isNaN(v) ? 0 : v);
-        if (num > 0) cleanGoals[k] = num;
-      });
-
-      return {
-        ...prev,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            goals: cleanGoals,
-          },
-        },
-      };
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+    const cleanGoals: Record<string, number> = {};
+    Object.entries(goals).forEach(([k, v]) => {
+      const num = Math.max(0, isNaN(v) ? 0 : v);
+      if (num > 0) cleanGoals[k] = num;
     });
+
+    const updated: StoreDatabase = {
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          goals: cleanGoals,
+        },
+      },
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast(`Metas da loja para ${monthKey.split('-').reverse().join('/')} salvas com sucesso!`, 'success');
   };
 
   const clearStoreGoals = (monthKey: string) => {
-    setDatabase((prev) => {
-      const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
-      return {
-        ...prev,
-        months: {
-          ...prev.months,
-          [monthKey]: {
-            ...existingMonth,
-            goals: {},
-          },
+    const prev = databaseRef.current;
+    const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
+    const updated: StoreDatabase = {
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      months: {
+        ...prev.months,
+        [monthKey]: {
+          ...existingMonth,
+          goals: {},
         },
-      };
-    });
+      },
+    };
+    setDatabase(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
+    pushRemoteStoreDatabase(updated).catch(() => {});
     showToast(`Metas do mês ${monthKey.split('-').reverse().join('/')} foram zeradas.`, 'info');
   };
 
@@ -424,94 +634,115 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const demo = generateDemoSampleDatabase();
     setDatabase(demo);
     setSelectedDate(demo.lastSelectedDate);
-    showToast('Dados de exemplo da Claro Tietê Plaza carregados com sucesso!', 'success');
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(demo));
+    } catch {}
+    pushRemoteStoreDatabase(demo).catch(() => {});
+    showToast('Dados de exemplo carregados e sincronizados com o servidor!', 'success');
   };
 
   const clearAllData = () => {
-    const empty = createCleanDatabase();
-    setDatabase(empty);
-    setSelectedDate(empty.lastSelectedDate);
-    showToast('Dashboard limpo e zerado. Pronto para novos lançamentos!', 'info');
+    const clean = createCleanDatabase();
+    setDatabase(clean);
+    setSelectedDate(clean.lastSelectedDate);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+    } catch {}
+    pushRemoteStoreDatabase(clean).catch(() => {});
+    showToast('Todos os dados foram reiniciados com sucesso.', 'info');
   };
 
   const clearCacheAndReset = () => {
     try {
-      localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem('claro_tiete_plaza_db_v1');
+      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.clear();
     } catch (e) {
-      console.error(e);
+      console.warn('Erro ao limpar localStorage:', e);
     }
-    const clean = createCleanDatabase();
-    setDatabase(clean);
-    setSelectedDate(clean.lastSelectedDate);
-    showToast('Cache zerado com sucesso! Dashboard limpo com a equipe atualizada.', 'success');
+    const freshDb = createCleanDatabase();
+    setDatabase(freshDb);
+    setSelectedDate(freshDb.lastSelectedDate);
+    pushRemoteStoreDatabase(freshDb).catch(() => {});
+    showToast('Cache local limpo e sistema sincronizado.', 'success');
   };
 
   const exportDatabaseJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(database, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `claro_tiete_plaza_backup_${new Date().toISOString().substring(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showToast('Backup JSON exportado com sucesso!', 'success');
+    try {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(database, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `claro_tiete_plaza_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Backup JSON exportado com sucesso!', 'success');
+    } catch {
+      showToast('Erro ao exportar backup.', 'error');
+    }
   };
 
   const exportDatabaseCSV = () => {
-    // Generate CSV for current month
-    const monthKey = filters.month;
-    const monthData = database.months[monthKey];
-    if (!monthData || !monthData.days) {
-      showToast('Nenhum dado encontrado para exportar neste mês.', 'error');
-      return;
-    }
-
-    const activeSellers = database.sellers.filter((s) => s.active);
-    let csv = `DATA;INDICADOR;CATEGORIA;${activeSellers.map((s) => s.name).join(';')};TOTAL_DIA\n`;
-
-    Object.values(monthData.days).forEach((entry: any) => {
-      Object.entries(entry?.values || {}).forEach(([indId, sMap]: [string, any]) => {
-        let rowSum = 0;
-        const sellerValues = activeSellers.map((s) => {
-          const val = Number(sMap?.[s.id]) || 0;
-          rowSum += val;
-          return val;
+    try {
+      const rows: string[] = [];
+      rows.push('Data;Vendedor;Categoria;Indicador;Quantidade');
+      Object.entries(database.months).forEach(([, monthData]) => {
+        const m = monthData as MonthData;
+        Object.entries(m.days || {}).forEach(([date, dayEntry]) => {
+          const d = dayEntry as DailyEntry;
+          Object.entries(d.values || {}).forEach(([indicatorId, sellerMap]) => {
+            Object.entries(sellerMap || {}).forEach(([sellerId, qty]) => {
+              if (Number(qty) > 0) {
+                const seller = database.sellers.find((s) => s.id === sellerId);
+                const sellerName = seller ? seller.name : sellerId;
+                rows.push(`${date};${sellerName};;${indicatorId};${qty}`);
+              }
+            });
+          });
         });
-
-        if (rowSum > 0) {
-          csv += `${entry.date};${indId};${sellerValues.join(';')};${rowSum}\n`;
-        }
       });
-    });
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `claro_tiete_plaza_${monthKey}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    showToast('Planilha CSV gerada com sucesso!', 'success');
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(rows.join('\n'));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', csvContent);
+      downloadAnchor.setAttribute('download', `claro_tiete_plaza_vendas_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Relatório CSV exportado com sucesso!', 'success');
+    } catch {
+      showToast('Erro ao exportar CSV.', 'error');
+    }
   };
 
   const importDatabaseJSON = (jsonStr: string): boolean => {
     try {
       const parsed = JSON.parse(jsonStr);
-      if (parsed && Array.isArray(parsed.sellers) && parsed.months) {
-        setDatabase({
-          ...parsed,
-          sellers: sortSellersAlphabetically(parsed.sellers),
-        });
-        showToast('Dados importados com sucesso!', 'success');
+      if (parsed && parsed.version && parsed.months && Array.isArray(parsed.sellers)) {
+        const merged = mergeStoreDatabases(databaseRef.current, parsed);
+        setDatabase(merged);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        } catch {}
+        pushRemoteStoreDatabase(merged).catch(() => {});
+        showToast('Backup restaurado e sincronizado com o servidor com sucesso!', 'success');
         return true;
       }
-    } catch (e) {
-      console.error('Erro ao importar JSON:', e);
+      showToast('Arquivo de backup inválido.', 'error');
+      return false;
+    } catch {
+      showToast('Erro ao processar arquivo JSON.', 'error');
+      return false;
     }
-    showToast('Arquivo JSON inválido.', 'error');
-    return false;
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      month: selectedMonth,
+      day: 'all',
+      sellerId: 'all',
+      categoryId: 'all',
+      indicatorId: 'all',
+    });
   };
 
   return (
@@ -544,6 +775,9 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         exportDatabaseJSON,
         exportDatabaseCSV,
         importDatabaseJSON,
+        syncStatus,
+        lastSyncTime: lastSyncTimeString,
+        manualSync,
         toast,
         showToast,
       }}

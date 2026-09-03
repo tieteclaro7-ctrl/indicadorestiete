@@ -15,7 +15,9 @@ import {
   HelpCircle,
   Hash,
   AlertTriangle,
-  X
+  X,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useSales } from '../context/SalesContext';
@@ -36,6 +38,9 @@ export const DailyEntryGrid: React.FC = () => {
     updateSellerName,
     showToast,
     setActiveTab,
+    syncStatus,
+    lastSyncTime,
+    manualSync,
   } = useSales();
 
   const [editingSellerId, setEditingSellerId] = useState<string | null>(null);
@@ -86,19 +91,32 @@ export const DailyEntryGrid: React.FC = () => {
     return { rowTotals: rTotals, columnTotals: cTotals, categoryTotals: catTotals, categorySellerTotals: catSellerTotals, grandTotal: gTotal };
   }, [currentDailyEntry, activeSellers]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    saveDailyEntry();
     try {
-      confetti({
-        particleCount: 60,
-        spread: 70,
-        origin: { y: 0.8 },
-      });
-    } catch (e) {
-      // ignore
+      const result = await saveDailyEntry();
+      if (result.success) {
+        try {
+          confetti({
+            particleCount: 60,
+            spread: 70,
+            origin: { y: 0.8 },
+          });
+        } catch (e) {
+          // ignore
+        }
+        showToast(
+          `Lançamento do dia ${selectedDate.split('-').reverse().join('/')} salvo e sincronizado com o servidor com sucesso!`,
+          'success'
+        );
+      } else {
+        showToast(result.error || 'Erro ao sincronizar com o servidor compartilhado.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Erro inesperado ao salvar lançamento.', 'error');
+    } finally {
+      setIsSaving(false);
     }
-    setTimeout(() => setIsSaving(false), 500);
   };
 
   const handlePrevDay = () => {
@@ -184,6 +202,33 @@ export const DailyEntryGrid: React.FC = () => {
 
         {/* Action Buttons: Save, PDF, Clear */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Sync Status Badge */}
+          <button
+            type="button"
+            onClick={manualSync}
+            title="Clique para forçar sincronização manual agora"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer bg-zinc-50 hover:bg-zinc-100"
+          >
+            {syncStatus === 'synced' && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-700 font-bold">🟢 SINCRONIZADO</span>
+              </>
+            )}
+            {syncStatus === 'syncing' && (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                <span className="text-amber-700 font-bold">SINCRONIZANDO...</span>
+              </>
+            )}
+            {syncStatus === 'error' && (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                <span className="text-red-700 font-bold">🔴 SEM CONEXÃO</span>
+              </>
+            )}
+          </button>
+
           <button
             id="btn-print-daily-pdf"
             onClick={() => exportDailyReportPDF(selectedDate, currentDailyEntry, database.sellers, database.storeName)}
@@ -209,7 +254,7 @@ export const DailyEntryGrid: React.FC = () => {
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs sm:text-sm font-extrabold shadow-sm hover:shadow-md transition-all cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>{isSaving ? 'Salvando...' : 'SALVAR DIA'}</span>
+            <span>{isSaving ? 'Salvando no servidor...' : 'SALVAR DIA'}</span>
           </button>
         </div>
       </div>
@@ -462,8 +507,8 @@ export const DailyEntryGrid: React.FC = () => {
                 Cancelar
               </button>
               <button
-                onClick={() => {
-                  clearDailyEntry();
+                onClick={async () => {
+                  await clearDailyEntry();
                   setShowClearModal(false);
                 }}
                 className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
