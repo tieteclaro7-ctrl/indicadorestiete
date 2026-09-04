@@ -4,12 +4,10 @@ import {
   Activity,
   Radio,
   Sparkles,
-  Download,
 } from 'lucide-react';
 import claroLogoImg from '../assets/images/claro_splash_logo_1787398577283.jpg';
 import { FuturisticVideoBackground } from './FuturisticVideoBackground';
 import { globalAudioEngine } from '../utils/audioPlayer';
-import { AppDownloadModal } from './AppDownloadModal';
 
 interface SplashScreenProps {
   onEnter: () => void;
@@ -18,7 +16,6 @@ interface SplashScreenProps {
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -114,7 +111,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
             </div>
           </div>
 
-          {/* Action Buttons: ENTRAR & BAIXAR O APP */}
+          {/* Action Button: ENTRAR */}
           <div className="mt-6 sm:mt-8 w-full flex flex-col items-center">
             <button
               type="button"
@@ -127,23 +124,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
               <LogIn className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:translate-x-2 text-red-600" />
             </button>
 
-            {/* Botão Baixar o App (Embaixo do botão ENTRAR) */}
-            <button
-              type="button"
-              id="btn-splash-download-app"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsDownloadModalOpen(true);
-              }}
-              className="group relative w-full sm:w-72 mt-3 py-3 px-6 bg-red-950/70 hover:bg-red-900/90 active:bg-red-950 text-white font-extrabold text-sm sm:text-base rounded-2xl border border-red-500/50 hover:border-red-400 shadow-[0_10px_25px_rgba(0,0,0,0.6),0_0_20px_rgba(234,29,44,0.25)] hover:shadow-[0_14px_30px_rgba(0,0,0,0.8),0_0_25px_rgba(234,29,44,0.45)] transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer backdrop-blur-md"
-            >
-              <Download className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 group-hover:scale-110 transition-transform stroke-[2.5]" />
-              <span className="tracking-wide">BAIXAR O APP</span>
-            </button>
-
             <p className="text-white/60 text-[11px] font-mono mt-3 flex items-center gap-1.5 text-center">
               <Sparkles className="w-3.5 h-3.5 text-red-400 shrink-0" />
-              <span>Clique em ENTRAR para iniciar ou baixe o app no seu dispositivo.</span>
+              <span>Clique em ENTRAR para iniciar o painel de registro de indicadores da loja.</span>
             </p>
           </div>
         </div>
@@ -153,12 +136,6 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
       <div className="text-center text-white/50 text-[10px] sm:text-[11px] font-mono tracking-wider z-20 pb-2 sm:pb-0 sm:absolute sm:bottom-3">
         CLARO BRASIL • SHOPPING TIETÊ PLAZA • SISTEMA INTERNO
       </div>
-
-      {/* Modal para Baixar / Instalar App */}
-      <AppDownloadModal
-        isOpen={isDownloadModalOpen}
-        onClose={() => setIsDownloadModalOpen(false)}
-      />
     </div>
   );
 };

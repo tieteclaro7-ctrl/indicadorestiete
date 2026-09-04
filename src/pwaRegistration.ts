@@ -24,6 +24,23 @@ export const isRunningStandalone = (): boolean => {
   );
 };
 
+// Top-level listener para garantir que o evento nativo beforeinstallprompt nunca seja perdido
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e as BeforeInstallPromptEvent;
+    isAppInstalled = false;
+    notifyInstallListeners(true);
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    isAppInstalled = true;
+    notifyInstallListeners(false);
+    console.log('[PWA] Aplicativo instalado com sucesso na tela inicial!');
+  });
+}
+
 // Registra o Service Worker
 export const registerPWA = () => {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
@@ -79,22 +96,6 @@ export const registerPWA = () => {
       }
     });
   });
-
-  // Captura o evento nativo de instalação no Android / Chrome
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e as BeforeInstallPromptEvent;
-    isAppInstalled = false;
-    notifyInstallListeners(true);
-  });
-
-  // Detecta quando o app foi instalado com sucesso
-  window.addEventListener('appinstalled', () => {
-    deferredPrompt = null;
-    isAppInstalled = true;
-    notifyInstallListeners(false);
-    console.log('[PWA] Aplicativo instalado com sucesso na tela inicial!');
-  });
 };
 
 const notifyInstallListeners = (canInstall: boolean) => {
@@ -138,5 +139,13 @@ export const promptInstallApp = async (): Promise<'accepted' | 'dismissed' | 'un
 export const isIosDevice = (): boolean => {
   if (typeof window === 'undefined') return false;
   const userAgent = window.navigator.userAgent.toLowerCase();
-  return /iphone|ipad|ipod/.test(userAgent);
+  const isIos = /iphone|ipad|ipod/.test(userAgent);
+  const isIpadOs = /macintosh/.test(userAgent) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1;
+  return isIos || isIpadOs;
+};
+
+// Informa se é dispositivo Android
+export const isAndroidDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return /android/i.test(window.navigator.userAgent);
 };
