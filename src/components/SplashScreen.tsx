@@ -8,6 +8,11 @@ import {
 import claroLogoImg from '../assets/images/claro_splash_logo_1787398577283.jpg';
 import { FuturisticVideoBackground } from './FuturisticVideoBackground';
 import { globalAudioEngine } from '../utils/audioPlayer';
+import {
+  hasNativeInstallPrompt,
+  promptInstallApp,
+  isIosDevice,
+} from '../pwaRegistration';
 
 interface SplashScreenProps {
   onEnter: () => void;
@@ -16,6 +21,8 @@ interface SplashScreenProps {
 export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [showIosModal, setShowIosModal] = useState<boolean>(false);
+  const [showNonIosNotice, setShowNonIosNotice] = useState<boolean>(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -38,6 +45,26 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
     setTimeout(() => {
       onEnter();
     }, 350);
+  };
+
+  // Install app click trigger
+  const handleInstallClick = async (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+
+    // Se estiver no iPhone/iOS, exibe modal discreto específico
+    if (isIosDevice()) {
+      setShowIosModal(true);
+      return;
+    }
+
+    // Se estiver no Android, PC (Chrome, Edge) com evento nativo capturado
+    if (hasNativeInstallPrompt()) {
+      await promptInstallApp();
+      return;
+    }
+
+    // Se o evento nativo ainda não foi emitido ou navegador requer menu nativo
+    setShowNonIosNotice(true);
   };
 
   return (
@@ -111,7 +138,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
             </div>
           </div>
 
-          {/* Action Button: ENTRAR */}
+          {/* Action Button: ENTRAR + INSTALAR APP */}
           <div className="mt-6 sm:mt-8 w-full flex flex-col items-center">
             <button
               type="button"
@@ -124,6 +151,18 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
               <LogIn className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover:translate-x-2 text-red-600" />
             </button>
 
+            {/* Botão Adicional Obrigatório: 📲 INSTALAR APP (permanece fixo e visível na primeira tela) */}
+            <button
+              type="button"
+              id="btn-splash-instalar-app"
+              onClick={handleInstallClick}
+              onTouchEnd={handleInstallClick}
+              className="group relative w-full sm:w-72 mt-3.5 py-3.5 px-6 bg-gradient-to-r from-red-600 via-red-700 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-extrabold text-sm sm:text-base rounded-2xl border-2 border-red-400/80 shadow-[0_10px_25px_rgba(234,29,44,0.4),0_0_20px_rgba(234,29,44,0.3)] hover:shadow-[0_15px_35px_rgba(234,29,44,0.6)] transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2.5 cursor-pointer z-30"
+            >
+              <span className="text-lg sm:text-xl">📲</span>
+              <span className="tracking-wider uppercase font-black text-sm sm:text-base text-white drop-shadow">INSTALAR APP</span>
+            </button>
+
             <p className="text-white/60 text-[11px] font-mono mt-3 flex items-center gap-1.5 text-center">
               <Sparkles className="w-3.5 h-3.5 text-red-400 shrink-0" />
               <span>Clique em ENTRAR para iniciar o painel de registro de indicadores da loja.</span>
@@ -131,6 +170,81 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
           </div>
         </div>
       </div>
+
+      {/* Modal Discreto: iPhone / iOS */}
+      {showIosModal && (
+        <div
+          id="ios-install-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setShowIosModal(false)}
+        >
+          <div
+            className="relative w-full max-w-xs p-5 sm:p-6 rounded-3xl bg-zinc-950 border border-red-500/40 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(234,29,44,0.3)] text-center text-white space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center mx-auto text-2xl">
+              📲
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-sm sm:text-base font-black text-white">
+                Para instalar no iPhone:
+              </h3>
+              <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                Toque em <span className="text-red-400 font-bold">Compartilhar</span> e depois em{' '}
+                <span className="text-white font-bold">Adicionar à Tela de Início</span>.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              id="btn-fechar-modal-ios"
+              onClick={() => setShowIosModal(false)}
+              className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/5 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer border border-white/20"
+            >
+              FECHAR
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Discreto: Caso evento nativo não esteja pronto no navegador */}
+      {showNonIosNotice && (
+        <div
+          id="non-ios-install-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setShowNonIosNotice(false)}
+        >
+          <div
+            className="relative w-full max-w-xs p-5 sm:p-6 rounded-3xl bg-zinc-950 border border-red-500/40 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_30px_rgba(234,29,44,0.3)] text-center text-white space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center mx-auto text-2xl">
+              📲
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-sm sm:text-base font-black text-white">
+                Instalar Aplicativo
+              </h3>
+              <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                Abra o menu do navegador (<span className="text-white font-bold">⋮</span>) e selecione{' '}
+                <span className="text-red-400 font-bold">"Instalar aplicativo"</span> ou{' '}
+                <span className="text-white font-bold">"Adicionar à tela inicial"</span>.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              id="btn-fechar-modal-notice"
+              onClick={() => setShowNonIosNotice(false)}
+              className="w-full py-2.5 px-4 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/5 text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer border border-white/20"
+            >
+              FECHAR
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Corporate Footer on Splash */}
       <div className="text-center text-white/50 text-[10px] sm:text-[11px] font-mono tracking-wider z-20 pb-2 sm:pb-0 sm:absolute sm:bottom-3">

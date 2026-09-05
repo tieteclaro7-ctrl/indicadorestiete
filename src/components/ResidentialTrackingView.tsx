@@ -140,6 +140,13 @@ export const ResidentialTrackingView: React.FC = () => {
   // Dedicated poll function: reads remote shared server data as single source of truth
   const performSync = async (silent: boolean = false) => {
     if (isPollingRef.current || isDeletingRef.current) return;
+    // Don't disturb list if user is actively filling the creation/edit modal or typing in an input
+    const isUserTyping = typeof document !== 'undefined' && document.activeElement &&
+      ['input', 'textarea', 'select'].includes(document.activeElement.tagName?.toLowerCase());
+    if (silent && (isFormModalOpen || isUserTyping)) {
+      return;
+    }
+
     isPollingRef.current = true;
     if (!silent) {
       setSyncStatus('syncing');

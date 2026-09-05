@@ -34,8 +34,8 @@ interface SalesContextType {
   // Store goals management
   updateStoreMonthlyGoal: (monthKey: string, goal: number) => void;
   updateStoreGoal: (monthKey: string, indicatorId: string, value: number) => void;
-  updateAllStoreGoals: (monthKey: string, goals: Record<string, number>) => void;
-  clearStoreGoals: (monthKey: string) => void;
+  updateAllStoreGoals: (monthKey: string, goals: Record<string, number>) => Promise<void> | void;
+  clearStoreGoals: (monthKey: string) => Promise<void> | void;
   // Data actions
   resetToSampleData: () => void;
   clearAllData: () => void;
@@ -126,6 +126,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isPollingRef = useRef<boolean>(false);
   const databaseRef = useRef<StoreDatabase>(database);
   databaseRef.current = database;
+  const hasPendingEditsRef = useRef<boolean>(false);
 
   const selectedMonth = useMemo(() => selectedDate.substring(0, 7), [selectedDate]);
 
@@ -156,6 +157,15 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const sanitized = sanitizeStoreDatabase(res.data);
         const current = databaseRef.current;
         if (!areStoreDatabasesEqual(current, sanitized)) {
+          // Check if user is typing or if there are unsaved local edits
+          const isUserTyping = typeof document !== 'undefined' && document.activeElement &&
+            ['input', 'textarea', 'select'].includes(document.activeElement.tagName?.toLowerCase());
+
+          // During silent background sync, NEVER overwrite if user is typing or has unsaved edits
+          if (silent && (isUserTyping || hasPendingEditsRef.current)) {
+            return;
+          }
+
           // Server is the single source of truth: apply server data directly
           setDatabase(sanitized);
           try {
@@ -275,6 +285,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Update cell value in current session state
   const updateCellValue = (indicatorId: string, sellerId: string, value: number) => {
+    hasPendingEditsRef.current = true;
     const safeValue = Math.max(0, isNaN(value) ? 0 : value);
     const monthKey = selectedDate.substring(0, 7);
 
@@ -327,6 +338,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updatePasswordsCount = (count: string) => {
+    hasPendingEditsRef.current = true;
     const monthKey = selectedDate.substring(0, 7);
     setDatabase((prev) => {
       const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
@@ -403,6 +415,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const pushRes = await pushRemoteStoreDatabase(newDatabase);
 
     if (pushRes.success) {
+      hasPendingEditsRef.current = false;
       setDatabase(newDatabase);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newDatabase));
@@ -454,6 +467,7 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const pushRes = await pushRemoteStoreDatabase(newDatabase);
 
     if (pushRes.success) {
+      hasPendingEditsRef.current = false;
       setDatabase(newDatabase);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newDatabase));
@@ -600,7 +614,8 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     pushRemoteStoreDatabase(updated).catch(() => {});
   };
 
-  const updateAllStoreGoals = (monthKey: string, goals: Record<string, number>) => {
+  const updateAllStoreGoals = async (monthKey: string, goals: Record<string, number>) => {
+    hasPendingEditsRef.current = false;
     const prev = databaseRef.current;
     const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
     const cleanGoals: Record<string, number> = {};
@@ -624,11 +639,18 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch {}
-    pushRemoteStoreDatabase(updated).catch(() => {});
+    try {
+      const res = await pushRemoteStoreDatabase(updated);
+      if (res.success) {
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedAt);
+      }
+    } catch {}
     showToast(`Metas da loja para ${monthKey.split('-').reverse().join('/')} salvas com sucesso!`, 'success');
   };
 
-  const clearStoreGoals = (monthKey: string) => {
+  const clearStoreGoals = async (monthKey: string) => {
+    hasPendingEditsRef.current = false;
     const prev = databaseRef.current;
     const existingMonth = prev.months[monthKey] || { monthKey, days: {} };
     const updated: StoreDatabase = {
@@ -646,7 +668,13 @@ export const SalesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch {}
-    pushRemoteStoreDatabase(updated).catch(() => {});
+    try {
+      const res = await pushRemoteStoreDatabase(updated);
+      if (res.success) {
+        setSyncStatus('synced');
+        setLastSyncTimeString(res.updatedAt);
+      }
+    } catch {}
     showToast(`Metas do mês ${monthKey.split('-').reverse().join('/')} foram zeradas.`, 'info');
   };
 

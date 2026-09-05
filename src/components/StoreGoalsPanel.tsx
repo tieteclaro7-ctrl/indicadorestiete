@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Target,
   ChevronDown,
@@ -30,23 +30,44 @@ export const StoreGoalsPanel: React.FC = () => {
   const activeSellers = useMemo(() => database.sellers.filter((s) => s.active), [database.sellers]);
   const activeSellerIds = useMemo(() => new Set(activeSellers.map((s) => s.id)), [activeSellers]);
 
+  // Ref to the panel container to inspect active focus
+  const panelRef = useRef<HTMLDivElement>(null);
+
   // Is panel expanded for full indicator editing
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const hasUnsavedChangesRef = useRef(false);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
 
-  // Current goals map for the active month
+  // Current goals map for the active month from the database
   const savedGoals: Record<string, number> = useMemo(() => {
     return currentMonthData?.goals || database.monthlyGoals?.[currentMonthKey] || {};
   }, [currentMonthData, database.monthlyGoals, currentMonthKey]);
 
-  // Local draft state for quick inputs before debouncing or direct change
-  const [localGoals, setLocalGoals] = useState<Record<string, number>>(savedGoals);
+  // Local draft state for quick inputs: stores string or number so the user can type freely without clobbering
+  const [localGoals, setLocalGoals] = useState<Record<string, string | number>>(savedGoals);
+  const localGoalsRef = useRef(localGoals);
+  localGoalsRef.current = localGoals;
 
-  // Sync local goals when saved goals change
-  React.useEffect(() => {
-    setLocalGoals(savedGoals);
+  // Month change detection: when user explicitly switches month in filters, load that month's goals
+  const lastMonthKeyRef = useRef(currentMonthKey);
+  useEffect(() => {
+    if (lastMonthKeyRef.current !== currentMonthKey) {
+      lastMonthKeyRef.current = currentMonthKey;
+      setLocalGoals(savedGoals);
+      setHasUnsavedChanges(false);
+    }
+  }, [currentMonthKey, savedGoals]);
+
+  // Sync local goals when saved goals change from server, ONLY if the user is not actively editing or focusing an input
+  useEffect(() => {
+    const isInputFocused = panelRef.current && panelRef.current.contains(document.activeElement);
+    if (!hasUnsavedChangesRef.current && !isInputFocused) {
+      setLocalGoals(savedGoals);
+    }
   }, [savedGoals]);
 
   // Calculate realized totals per indicator for the entire month across all active sellers
@@ -101,7 +122,8 @@ export const StoreGoalsPanel: React.FC = () => {
     let indicatorsAchieved = 0;
 
     ALL_INDICATORS.forEach((ind) => {
-      const goalVal = localGoals[ind.id] || 0;
+      const rawVal = localGoals[ind.id];
+      const goalVal = typeof rawVal === 'number' ? rawVal : parseInt(String(rawVal || 0), 10) || 0;
       const realVal = realizedByIndicator[ind.id] || 0;
 
       if (goalVal > 0) {
@@ -142,7 +164,8 @@ export const StoreGoalsPanel: React.FC = () => {
       let catIndicatorsWithGoal = 0;
 
       cat.indicators.forEach((ind) => {
-        const g = localGoals[ind.id] || 0;
+        const rawVal = localGoals[ind.id];
+        const g = typeof rawVal === 'number' ? rawVal : parseInt(String(rawVal || 0), 10) || 0;
         const r = realizedByIndicator[ind.id] || 0;
         if (g > 0) {
           catGoal += g;
@@ -193,35 +216,41 @@ export const StoreGoalsPanel: React.FC = () => {
   }, [selectedCategoryTab, searchQuery]);
 
   const handleGoalChange = (indicatorId: string, valueStr: string) => {
-    const val = valueStr === '' ? 0 : parseInt(valueStr, 10);
-    const safeVal = isNaN(val) ? 0 : Math.max(0, val);
+    // Digits only
+    const cleanStr = valueStr.replace(/[^0-9]/g, '');
 
-    setLocalGoals((prev) => {
-      const next = { ...prev };
-      if (safeVal === 0) {
-        delete next[indicatorId];
-      } else {
-        next[indicatorId] = safeVal;
-      }
-      return next;
-    });
-
-    // Auto-persist per indicator
-    updateStoreGoal(currentMonthKey, indicatorId, safeVal);
+    setLocalGoals((prev) => ({
+      ...prev,
+      [indicatorId]: cleanStr,
+    }));
+    setHasUnsavedChanges(true);
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     setIsSavingAll(true);
-    updateAllStoreGoals(currentMonthKey, localGoals);
-    setTimeout(() => {
-      setIsSavingAll(false);
+    const cleanGoals: Record<string, number> = {};
+    Object.entries(localGoalsRef.current).forEach(([k, v]) => {
+      const num = typeof v === 'number' ? v : parseInt(String(v), 10);
+      if (!isNaN(num) && num > 0) {
+        cleanGoals[k] = num;
+      }
+    });
+
+    try {
+      await updateAllStoreGoals(currentMonthKey, cleanGoals);
+      setHasUnsavedChanges(false);
       showToast('Metas por indicadores salvas com sucesso!', 'success');
-    }, 500);
+    } catch {
+      showToast('Erro ao salvar metas.', 'error');
+    } finally {
+      setIsSavingAll(false);
+    }
   };
 
   const handleClearGoals = () => {
     if (window.confirm(`Deseja realmente zerar as metas detalhadas para ${formatMonthLabel(currentMonthKey)}?`)) {
       setLocalGoals({});
+      setHasUnsavedChanges(false);
       clearStoreGoals(currentMonthKey);
       showToast('Metas zeradas com sucesso.', 'info');
     }
@@ -229,6 +258,7 @@ export const StoreGoalsPanel: React.FC = () => {
 
   return (
     <div
+      ref={panelRef}
       id="meta-detalhada-indicadores-panel"
       className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden transition-all duration-300 space-y-4 p-5"
     >
@@ -261,7 +291,7 @@ export const StoreGoalsPanel: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold transition-colors cursor-pointer border border-zinc-200"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-red-600" />
-            <span>{isExpanded ? 'Recolher Indicadores' : 'Expandir Indicadores (36)'}</span>
+            <span>{isExpanded ? 'Recolher Indicadores' : `Expandir Indicadores (${ALL_INDICATORS.length})`}</span>
             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         </div>
@@ -448,7 +478,7 @@ export const StoreGoalsPanel: React.FC = () => {
                     : 'bg-white text-zinc-600 hover:bg-zinc-200/70 border border-zinc-200'
                 }`}
               >
-                Todos (36)
+                Todos ({ALL_INDICATORS.length})
               </button>
               {categorySummaries.map((cat) => (
                 <button
@@ -480,6 +510,7 @@ export const StoreGoalsPanel: React.FC = () => {
               <div className="relative flex-1 sm:w-48">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
                 <input
+                  id="search-indicator-input"
                   type="text"
                   placeholder="Buscar indicador..."
                   value={searchQuery}
@@ -489,14 +520,19 @@ export const StoreGoalsPanel: React.FC = () => {
               </div>
 
               <button
+                id="btn-save-all-goals"
                 type="button"
                 onClick={handleSaveAll}
                 disabled={isSavingAll}
-                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 shadow-xs ${
+                  hasUnsavedChanges
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-sm ring-2 ring-red-400'
+                    : 'bg-zinc-800 hover:bg-zinc-900 text-white'
+                }`}
                 title="Salvar todas as metas"
               >
                 {isSavingAll ? <Check className="w-3.5 h-3.5 animate-bounce" /> : <Save className="w-3.5 h-3.5" />}
-                <span>{isSavingAll ? 'Salvo!' : 'Salvar Metas'}</span>
+                <span>{isSavingAll ? 'Salvo!' : hasUnsavedChanges ? 'Salvar Metas*' : 'Salvar Metas'}</span>
               </button>
 
               {summary.totalGoal > 0 && (
@@ -571,8 +607,9 @@ export const StoreGoalsPanel: React.FC = () => {
                   {/* Indicator Cards Grid */}
                   <div className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                     {category.indicators.map((indicator) => {
-                      const goalValue = localGoals[indicator.id] ?? '';
-                      const numGoal = typeof goalValue === 'number' ? goalValue : 0;
+                      const rawGoal = localGoals[indicator.id];
+                      const goalValue = rawGoal !== undefined && rawGoal !== null ? String(rawGoal) : '';
+                      const numGoal = Math.max(0, parseInt(goalValue, 10) || 0);
                       const realizedValue = realizedByIndicator[indicator.id] || 0;
                       const hasGoal = numGoal > 0;
                       const percent = hasGoal ? (realizedValue / numGoal) * 100 : 0;
@@ -618,13 +655,18 @@ export const StoreGoalsPanel: React.FC = () => {
                           <div className="mt-2 space-y-2 pt-2 border-t border-zinc-100">
                             {/* Input Field for Store Goal */}
                             <div className="flex items-center justify-between gap-2">
-                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight">
+                              <label
+                                htmlFor={`goal-input-${indicator.id}`}
+                                className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight cursor-pointer"
+                              >
                                 Meta:
                               </label>
                               <div className="relative w-20">
                                 <input
-                                  type="number"
-                                  min="0"
+                                  id={`goal-input-${indicator.id}`}
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
                                   placeholder="0"
                                   value={goalValue}
                                   onChange={(e) => handleGoalChange(indicator.id, e.target.value)}

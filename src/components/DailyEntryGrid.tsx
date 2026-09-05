@@ -364,6 +364,7 @@ export const DailyEntryGrid: React.FC = () => {
                             }`}
                           >
                             <input
+                              id={`cell-${indicator.id}-${seller.id}`}
                               type="number"
                               min="0"
                               max="999"
